@@ -51,6 +51,8 @@ const RiskDetailPage = lazy(
 );
 const GrcPage = lazy(() => import("@/features/grc/GrcPage"));
 const MetamodelAdmin = lazy(() => import("@/features/admin/MetamodelAdmin"));
+const DashboardsAdmin = lazy(() => import("@/features/admin/DashboardsAdmin"));
+const DashboardBuilder = lazy(() => import("@/features/admin/DashboardBuilder"));
 const UsersAdmin = lazy(() => import("@/features/admin/UsersAdmin"));
 const SettingsAdmin = lazy(() => import("@/features/admin/SettingsAdmin"));
 const SurveysAdmin = lazy(() => import("@/features/admin/SurveysAdmin"));
@@ -199,6 +201,9 @@ function AppRoutes() {
                 <Route path="/admin/surveys/new" element={<RequirePermission permission="surveys.manage"><SurveyBuilder /></RequirePermission>} />
                 <Route path="/admin/surveys/:id/results" element={<RequirePermission permission="surveys.manage"><SurveyResults /></RequirePermission>} />
                 <Route path="/admin/surveys/:id" element={<RequirePermission permission="surveys.manage"><SurveyBuilder /></RequirePermission>} />
+                <Route path="/admin/dashboards" element={<RequirePermission permission="dashboard.manage"><DashboardsAdmin /></RequirePermission>} />
+                <Route path="/admin/dashboards/new" element={<RequirePermission permission="dashboard.manage"><DashboardBuilder /></RequirePermission>} />
+                <Route path="/admin/dashboards/:id" element={<RequirePermission permission="dashboard.manage"><DashboardBuilder /></RequirePermission>} />
                 <Route path="/turbolens" element={<ModuleGate module="turbolens"><TurboLensPage /></ModuleGate>} />
                 <Route path="/turbolens/assessments/:id" element={<ModuleGate module="turbolens"><AssessmentViewer /></ModuleGate>} />
                 <Route path="/admin/turbolens" element={<RequirePermission permission="turbolens.manage"><Navigate to="/admin/settings?tab=turbolens" /></RequirePermission>} />

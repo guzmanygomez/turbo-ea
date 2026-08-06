@@ -44,6 +44,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 import type { CardType, SectionDef, FieldDef, SectionConfig } from "@/types";
+import { hasActiveRules } from "@/utils/visibilityRules";
 import { useResolveLabel, useFieldLabel } from "@/hooks/useResolveLabel";
 import { api } from "@/api/client";
 import MaterialSymbol from "@/components/MaterialSymbol";
@@ -112,6 +113,7 @@ function fieldTypeColor(type: string): string {
   const map: Record<string, string> = {
     text: "#1976d2", number: "#7b1fa2", cost: "#e65100", boolean: "#2e7d32",
     date: "#c2185b", url: "#0277bd", single_select: "#00838f", multiple_select: "#4527a0",
+    table: "#558b2f",
   };
   return map[type] || "#666";
 }
@@ -212,6 +214,7 @@ function FieldCard({
   onEdit,
   onDelete,
   onMove,
+  onVisibilityRules,
   isDragging,
 }: {
   field: FieldDef;
@@ -220,10 +223,12 @@ function FieldCard({
   onEdit?: () => void;
   onDelete?: () => void;
   onMove?: (e: React.MouseEvent<HTMLElement>) => void;
+  onVisibilityRules?: () => void;
   isDragging?: boolean;
 }) {
   const { t } = useTranslation(["admin"]);
   const fieldLabel = useFieldLabel();
+  const fieldHasRules = hasActiveRules(field.visibility_rules);
   return (
     <Box
       sx={{
@@ -241,10 +246,11 @@ function FieldCard({
       <Typography variant="body2" fontWeight={500} sx={{ flex: 1 }} noWrap>
         {isProtected ? field.label : fieldLabel(field)}
         {isCalc && <Chip component="span" size="small" label="calc" color="info" sx={{ ml: 0.5, height: 16, fontSize: "0.6rem" }} />}
+        {fieldHasRules && <Chip component="span" size="small" label={t("cardLayout.rulesActive")} color="secondary" sx={{ ml: 0.5, height: 16, fontSize: "0.6rem" }} />}
       </Typography>
       <WeightBadge weight={field.weight} />
       <Chip size="small" label={field.type.replace("_", " ")} sx={{ bgcolor: fieldTypeColor(field.type), color: "#fff", height: 18, fontSize: "0.6rem" }} />
-      {(!isProtected && (onEdit || onDelete || onMove)) && (
+      {(!isProtected && (onEdit || onDelete || onMove || onVisibilityRules)) && (
         <Box className="field-actions" sx={{ display: "flex", gap: 0.25, opacity: 0, transition: "opacity 0.15s" }}>
           {onMove && (
             <Tooltip title={t("cardLayout.moveFieldTooltip")}>
@@ -252,6 +258,13 @@ function FieldCard({
             </Tooltip>
           )}
           {onEdit && <IconButton size="small" onClick={onEdit} sx={{ p: 0.25 }}><MaterialSymbol icon="edit" size={16} /></IconButton>}
+          {onVisibilityRules && (
+            <Tooltip title={t("cardLayout.visibilityRulesTooltip")}>
+              <IconButton size="small" onClick={onVisibilityRules} sx={{ p: 0.25, color: fieldHasRules ? "secondary.main" : undefined }}>
+                <MaterialSymbol icon="rule" size={16} />
+              </IconButton>
+            </Tooltip>
+          )}
           {onDelete && <IconButton size="small" onClick={onDelete} sx={{ p: 0.25 }}><MaterialSymbol icon="delete" size={16} /></IconButton>}
         </Box>
       )}
@@ -262,11 +275,12 @@ function FieldCard({
 // ── SortableFieldCard ────────────────────────────────────────────
 
 function SortableFieldCard({
-  id, field, isCalc, onEdit, onDelete, onMove,
+  id, field, isCalc, onEdit, onDelete, onMove, onVisibilityRules,
 }: {
   id: string; field: FieldDef; isCalc?: boolean;
   onEdit?: () => void; onDelete?: () => void;
   onMove?: (e: React.MouseEvent<HTMLElement>) => void;
+  onVisibilityRules?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
@@ -281,7 +295,7 @@ function SortableFieldCard({
           <MaterialSymbol icon="drag_indicator" size={16} color="#bbb" />
         </Box>
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <FieldCard field={field} isCalc={isCalc} onEdit={onEdit} onDelete={onDelete} onMove={onMove} isDragging={isDragging} />
+          <FieldCard field={field} isCalc={isCalc} onEdit={onEdit} onDelete={onDelete} onMove={onMove} onVisibilityRules={onVisibilityRules} isDragging={isDragging} />
         </Box>
       </Box>
     </Box>
@@ -413,7 +427,7 @@ function DroppableColumn({ id, label, children, isEmpty }: {
 
 function VisualFieldLayout({
   sectionIdx, section, typeKey, fieldsSchema, calculatedFieldKeys,
-  onRefresh, openAddField, openEditField, promptDeleteField,
+  onRefresh, openAddField, openEditField, promptDeleteField, openFieldVisibilityRules,
 }: {
   sectionIdx: number;
   section: SectionDef;
@@ -424,6 +438,7 @@ function VisualFieldLayout({
   openAddField: (si: number) => void;
   openEditField: (si: number, fi: number) => void;
   promptDeleteField: (si: number, fi: number) => void;
+  openFieldVisibilityRules?: (si: number, fi: number) => void;
 }) {
   const { t } = useTranslation(["admin", "common"]);
   const rl = useResolveLabel();
@@ -740,6 +755,7 @@ function VisualFieldLayout({
                     onEdit={fi >= 0 ? () => openEditField(sectionIdx, fi) : undefined}
                     onDelete={fi >= 0 ? () => promptDeleteField(sectionIdx, fi) : undefined}
                     onMove={moveTargets.length > 0 ? (e) => openMoveMenu(fk, e) : undefined}
+                    onVisibilityRules={fi >= 0 && openFieldVisibilityRules ? () => openFieldVisibilityRules(sectionIdx, fi) : undefined}
                   />
                 );
               })}
@@ -757,6 +773,7 @@ function VisualFieldLayout({
           onEdit={fi >= 0 ? () => openEditField(sectionIdx, fi) : undefined}
           onDelete={fi >= 0 ? () => promptDeleteField(sectionIdx, fi) : undefined}
           onMove={moveTargets.length > 0 ? (e) => openMoveMenu(itemId, e) : undefined}
+          onVisibilityRules={fi >= 0 && openFieldVisibilityRules ? () => openFieldVisibilityRules(sectionIdx, fi) : undefined}
         />
       );
     });
@@ -869,13 +886,14 @@ function VisualFieldLayout({
 
 function DescriptionFieldsPanel({
   typeKey, fieldsSchema, calculatedFieldKeys,
-  onRefresh, openAddField, openEditField, promptDeleteField,
+  onRefresh, openAddField, openEditField, promptDeleteField, openFieldVisibilityRules,
 }: {
   typeKey: string; fieldsSchema: SectionDef[]; calculatedFieldKeys: string[];
   onRefresh: () => void;
   openAddField: (si: number) => void;
   openEditField: (si: number, fi: number) => void;
   promptDeleteField: (si: number, fi: number) => void;
+  openFieldVisibilityRules?: (si: number, fi: number) => void;
 }) {
   const { t } = useTranslation(["admin"]);
   const descIdx = fieldsSchema.findIndex((s) => s.section === "__description");
@@ -933,6 +951,7 @@ function DescriptionFieldsPanel({
                 isCalc={calculatedFieldKeys.includes(f.key)}
                 onEdit={() => openEditField(actualDescIdx, fi)}
                 onDelete={() => promptDeleteField(actualDescIdx, fi)}
+                onVisibilityRules={openFieldVisibilityRules ? () => openFieldVisibilityRules(actualDescIdx, fi) : undefined}
               />
             ))}
           </SortableContext>
@@ -949,7 +968,7 @@ function DescriptionFieldsPanel({
 
 function SortableSectionItem({
   id, sectionKey, info, cfg, expanded, onToggleExpand,
-  onToggleCollapsed, onToggleHidden, onDelete, children, dqWeight,
+  onToggleCollapsed, onToggleHidden, onDelete, onVisibilityRules, children, dqWeight,
 }: {
   id: string; sectionKey: string;
   info: { label: string; icon: string; isCustom: boolean; labelKey?: string; section?: SectionDef | null };
@@ -958,6 +977,7 @@ function SortableSectionItem({
   onToggleCollapsed: () => void;
   onToggleHidden: () => void;
   onDelete?: () => void;
+  onVisibilityRules?: () => void;
   children?: React.ReactNode;
   dqWeight?: number;
 }) {
@@ -966,6 +986,7 @@ function SortableSectionItem({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
   const canExpand = (info.isCustom || sectionKey === "description") && !cfg.hidden;
+  const sectionHasRules = hasActiveRules(info.section?.visibility_rules);
 
   return (
     <Box ref={setNodeRef} style={style} sx={{ border: 1, borderColor: cfg.hidden ? "action.disabled" : "divider", borderRadius: 1.5, mb: 1, bgcolor: cfg.hidden ? "action.disabledBackground" : "background.paper" }}>
@@ -992,6 +1013,13 @@ function SortableSectionItem({
             sx={{ mr: 0, ml: 0 }}
           />
         </Tooltip>
+        {onVisibilityRules && (
+          <Tooltip title={t("cardLayout.visibilityRulesTooltip")}>
+            <IconButton size="small" onClick={onVisibilityRules} sx={{ color: sectionHasRules ? "secondary.main" : undefined }}>
+              <MaterialSymbol icon="rule" size={18} color={sectionHasRules ? undefined : "#999"} />
+            </IconButton>
+          </Tooltip>
+        )}
         {onDelete && (
           <Tooltip title={t("cardLayout.deleteSection")}>
             <IconButton size="small" onClick={onDelete}>
@@ -1020,10 +1048,13 @@ interface CardLayoutEditorProps {
   promptDeleteField: (si: number, fi: number) => void;
   promptDeleteSection?: (si: number) => void;
   calculatedFieldKeys: string[];
+  openFieldVisibilityRules?: (si: number, fi: number) => void;
+  openSectionVisibilityRules?: (si: number) => void;
 }
 
 export default function CardLayoutEditor({
-  cardType, onRefresh, openAddField, openEditField, promptDeleteField, promptDeleteSection, calculatedFieldKeys,
+  cardType, onRefresh, openAddField, openEditField, promptDeleteField, promptDeleteSection,
+  calculatedFieldKeys, openFieldVisibilityRules, openSectionVisibilityRules,
 }: CardLayoutEditorProps) {
   const { t } = useTranslation(["admin", "common"]);
   const secCfg = (cardType.section_config || {}) as Record<string, SectionConfig> & { __order?: string[]; __dataQuality?: Record<string, number> };
@@ -1125,6 +1156,7 @@ export default function CardLayoutEditor({
                 onToggleCollapsed={() => updateSectionProp(key, { defaultExpanded: cfgForSection.defaultExpanded === false })}
                 onToggleHidden={() => updateSectionProp(key, { hidden: !cfgForSection.hidden })}
                 onDelete={info.isCustom && promptDeleteSection && schemaIdx >= 0 ? () => promptDeleteSection(schemaIdx) : undefined}
+                onVisibilityRules={info.isCustom && openSectionVisibilityRules && schemaIdx >= 0 ? () => openSectionVisibilityRules(schemaIdx) : undefined}
                 dqWeight={DQ_SECTION_KEYS.has(key) ? (dqConfig[key] ?? 1) : undefined}
               >
                 {info.isCustom && info.section && schemaIdx >= 0 && (
@@ -1138,6 +1170,7 @@ export default function CardLayoutEditor({
                     openAddField={openAddField}
                     openEditField={openEditField}
                     promptDeleteField={promptDeleteField}
+                    openFieldVisibilityRules={openFieldVisibilityRules}
                   />
                 )}
                 {key === "description" && (
@@ -1149,6 +1182,7 @@ export default function CardLayoutEditor({
                     openAddField={openAddField}
                     openEditField={openEditField}
                     promptDeleteField={promptDeleteField}
+                    openFieldVisibilityRules={openFieldVisibilityRules}
                   />
                 )}
               </SortableSectionItem>

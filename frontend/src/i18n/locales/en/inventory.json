@@ -7,6 +7,8 @@
   "toolbar.editing": "Editing",
   "actions.previewCard": "Preview card",
   "columns.title": "Columns",
+  "columns.tableRowCount_one": "{{count}} row",
+  "columns.tableRowCount_other": "{{count}} rows",
   "columns.lifecycle": "Lifecycle",
   "columns.approvalStatus": "Approval Status",
   "columns.dataQuality": "Data Quality",

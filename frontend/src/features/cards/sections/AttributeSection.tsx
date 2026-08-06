@@ -93,6 +93,7 @@ function AttributeSection({
   // Count filled fields in this section
   const filled = visibleFields.filter((f) => {
     const v = (card.attributes || {})[f.key];
+    if (f.type === "table") return Array.isArray(v) && v.length > 0;
     return v != null && v !== "" && v !== false;
   }).length;
 
@@ -125,24 +126,40 @@ function AttributeSection({
 
   const expanded = initialExpanded ?? (section.defaultExpanded !== false);
 
-  // Read-only field grid
-  const renderReadGrid = (fields: FieldDef[]) => (
-    <Box sx={{ display: "grid", gridTemplateColumns: "1fr", rowGap: 1, columnGap: 2, "@container (min-width: 480px)": { gridTemplateColumns: "180px 1fr", alignItems: "center" } }}>
-      {fields.map((field) => (
-        <Box key={field.key} sx={{ display: "contents" }}>
-          <Typography variant="body2" color="text.secondary">
-            {fieldLabel(field)}
-            {calculatedFieldKeys.includes(field.key) ? (
-              <Chip component="span" size="small" label={t("attributes.calculated")} sx={{ height: 16, fontSize: "0.55rem", ml: 0.5, verticalAlign: "middle" }} />
-            ) : field.readonly ? (
-              <Chip component="span" size="small" label={t("attributes.auto")} sx={{ height: 16, fontSize: "0.55rem", ml: 0.5, verticalAlign: "middle" }} />
-            ) : null}
-          </Typography>
-          <FieldValue field={field} value={(card.attributes || {})[field.key]} currencyFmt={fmt} canViewCosts={canViewCosts} />
-        </Box>
-      ))}
-    </Box>
-  );
+  // Read-only field grid — table fields rendered full-width below the normal grid
+  const renderReadGrid = (fields: FieldDef[]) => {
+    const normalFields = fields.filter((f) => f.type !== "table");
+    const tableFields = fields.filter((f) => f.type === "table");
+    return (
+      <>
+        {normalFields.length > 0 && (
+          <Box sx={{ display: "grid", gridTemplateColumns: "1fr", rowGap: 1, columnGap: 2, "@container (min-width: 480px)": { gridTemplateColumns: "180px 1fr", alignItems: "center" } }}>
+            {normalFields.map((field) => (
+              <Box key={field.key} sx={{ display: "contents" }}>
+                <Typography variant="body2" color="text.secondary">
+                  {fieldLabel(field)}
+                  {calculatedFieldKeys.includes(field.key) ? (
+                    <Chip component="span" size="small" label={t("attributes.calculated")} sx={{ height: 16, fontSize: "0.55rem", ml: 0.5, verticalAlign: "middle" }} />
+                  ) : field.readonly ? (
+                    <Chip component="span" size="small" label={t("attributes.auto")} sx={{ height: 16, fontSize: "0.55rem", ml: 0.5, verticalAlign: "middle" }} />
+                  ) : null}
+                </Typography>
+                <FieldValue field={field} value={(card.attributes || {})[field.key]} currencyFmt={fmt} canViewCosts={canViewCosts} />
+              </Box>
+            ))}
+          </Box>
+        )}
+        {tableFields.map((field) => (
+          <Box key={field.key} sx={{ mt: normalFields.length > 0 ? 1.5 : 0 }}>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              {fieldLabel(field)}
+            </Typography>
+            <FieldValue field={field} value={(card.attributes || {})[field.key]} currencyFmt={fmt} canViewCosts={canViewCosts} />
+          </Box>
+        ))}
+      </>
+    );
+  };
 
   // Edit field list
   const renderEditFields = (fields: FieldDef[]) => (
@@ -153,6 +170,20 @@ function AttributeSection({
             <Typography variant="body2" color="text.secondary" sx={{ minWidth: 160 }}>{fieldLabel(field)}</Typography>
             <FieldValue field={field} value={attrs[field.key]} currencyFmt={fmt} canViewCosts={canViewCosts} />
             <Chip size="small" label={calculatedFieldKeys.includes(field.key) ? t("attributes.calculated") : t("attributes.auto")} sx={{ height: 18, fontSize: "0.6rem", ml: 0.5 }} />
+          </Box>
+        ) : field.type === "table" ? (
+          <Box key={field.key}>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              {fieldLabel(field)}
+            </Typography>
+            <FieldEditor
+              field={field}
+              value={attrs[field.key]}
+              onChange={(v) => setAttr(field.key, v)}
+              currencySymbol={symbol}
+              error={urlErrors[field.key]}
+              canViewCosts={canViewCosts}
+            />
           </Box>
         ) : isVendorField(field) ? (
           <VendorField

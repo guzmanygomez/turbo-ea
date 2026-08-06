@@ -350,5 +350,6 @@
   "dashboard.workspace.andMore_one": "و{{count}} آخر",
   "dashboard.workspace.andMore_other": "و{{count}} آخرون",
   "actions.undo": "تراجع",
-  "dashboard.workspace.favoriteRemoved": "تمت إزالة «{{name}}» من المفضّلة"
+  "dashboard.workspace.favoriteRemoved": "تمت إزالة «{{name}}» من المفضّلة",
+  "fieldTypes.table": "جدول"
 }

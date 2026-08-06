@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import Box from "@mui/material/Box";
@@ -10,15 +10,22 @@ import Typography from "@mui/material/Typography";
 import MaterialSymbol from "@/components/MaterialSymbol";
 import { useAuthContext } from "@/hooks/AuthContext";
 import { api } from "@/api/client";
-import type { DashboardTabKey } from "@/types";
+import type { CustomDashboard, DashboardTabKey } from "@/types";
 import AdminTab from "./admin/AdminTab";
 import OverviewTab from "./OverviewTab";
 import WorkspaceTab from "./workspace/WorkspaceTab";
+import CustomDashboardTab from "./CustomDashboardTab";
 
 const ADMIN_TAB_PERMISSION = "admin.users";
+const BUILT_IN_TABS: DashboardTabKey[] = ["overview", "workspace"];
 
 function isValidTab(value: string | null): value is DashboardTabKey {
-  return value === "overview" || value === "workspace" || value === "admin";
+  return (
+    value === "overview" ||
+    value === "workspace" ||
+    value === "admin" ||
+    (typeof value === "string" && value.startsWith("custom-"))
+  );
 }
 
 interface PinTabLabelProps {
@@ -65,29 +72,48 @@ export default function Dashboard() {
   const { t } = useTranslation("common");
   const { user, refreshUser } = useAuthContext();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [customDashboards, setCustomDashboards] = useState<CustomDashboard[]>([]);
+
+  useEffect(() => {
+    api
+      .get<CustomDashboard[]>("/custom-dashboards/my")
+      .then(setCustomDashboards)
+      .catch(() => {
+        /* non-fatal — user may not be in any groups */
+      });
+  }, []);
 
   const isAdmin =
     !!user?.permissions?.["*"] || !!user?.permissions?.[ADMIN_TAB_PERMISSION];
-  const validTabs = useMemo<DashboardTabKey[]>(
-    () => (isAdmin ? ["overview", "workspace", "admin"] : ["overview", "workspace"]),
-    [isAdmin],
-  );
+
+  const validTabs = useMemo<DashboardTabKey[]>(() => {
+    const customTabs: DashboardTabKey[] = customDashboards.map(
+      (d) => `custom-${d.id}` as DashboardTabKey,
+    );
+    const adminTabs: DashboardTabKey[] = isAdmin ? ["admin"] : [];
+    return [...BUILT_IN_TABS, ...customTabs, ...adminTabs];
+  }, [isAdmin, customDashboards]);
+
+  // Compute the default tab: custom dashboard default takes priority over user preference
+  const computedDefaultTab = useMemo<DashboardTabKey>(() => {
+    const userGroupIds = new Set(user?.group_ids ?? []);
+    if (userGroupIds.size > 0) {
+      // Dashboards are already sorted by priority desc from the API
+      const defaultDash = customDashboards.find((d) =>
+        d.defaultForGroups.some((g) => userGroupIds.has(g)),
+      );
+      if (defaultDash) return `custom-${defaultDash.id}`;
+    }
+    const prefRaw: DashboardTabKey = user?.ui_preferences?.dashboard_default_tab ?? "overview";
+    return validTabs.includes(prefRaw) ? prefRaw : "overview";
+  }, [customDashboards, user, validTabs]);
 
   const rawTab = searchParams.get("tab");
-  const preferredTabRaw: DashboardTabKey =
-    user?.ui_preferences?.dashboard_default_tab ?? "overview";
-  // Guard against a stale preference / URL pointing at the admin tab when the
-  // user no longer has permission to see it.
-  const preferredTab: DashboardTabKey = validTabs.includes(preferredTabRaw)
-    ? preferredTabRaw
-    : "overview";
-  const requestedTab: DashboardTabKey = isValidTab(rawTab) ? rawTab : preferredTab;
+  const requestedTab: DashboardTabKey = isValidTab(rawTab) ? rawTab : computedDefaultTab;
   const activeTab: DashboardTabKey = validTabs.includes(requestedTab)
     ? requestedTab
-    : preferredTab;
+    : computedDefaultTab;
 
-  // If the URL has no explicit ?tab=, write the resolved tab back so deep
-  // links and refreshes are stable. Only run when there is no rawTab.
   useEffect(() => {
     if (rawTab === null) {
       const next = new URLSearchParams(searchParams);
@@ -107,7 +133,7 @@ export default function Dashboard() {
 
   const togglePin = useCallback(
     async (tab: DashboardTabKey) => {
-      const isAlreadyDefault = preferredTab === tab;
+      const isAlreadyDefault = computedDefaultTab === tab;
       const nextValue: DashboardTabKey | null = isAlreadyDefault ? null : tab;
       try {
         await api.patch("/users/me/ui-preferences", {
@@ -118,17 +144,31 @@ export default function Dashboard() {
         console.error("Failed to persist dashboard pin preference", err);
       }
     },
-    [preferredTab, refreshUser],
+    [computedDefaultTab, refreshUser],
   );
 
-  const tabConfigs = useMemo(
-    () =>
-      validTabs.map((key) => ({
-        key,
-        label: t(`dashboard.tabs.${key}`),
-      })),
-    [t, validTabs],
-  );
+  const tabConfigs = useMemo(() => {
+    const builtIn = BUILT_IN_TABS.map((key) => ({
+      key,
+      label: t(`dashboard.tabs.${key}`),
+      pinnable: true,
+    }));
+    const custom = customDashboards.map((d) => ({
+      key: `custom-${d.id}` as DashboardTabKey,
+      label: d.name,
+      pinnable: false,
+    }));
+    const adminTab = isAdmin
+      ? [{ key: "admin" as DashboardTabKey, label: t("dashboard.tabs.admin"), pinnable: true }]
+      : [];
+    return [...builtIn, ...custom, ...adminTab];
+  }, [t, customDashboards, isAdmin]);
+
+  const activeDashboard = useMemo(() => {
+    if (!activeTab.startsWith("custom-")) return null;
+    const id = activeTab.slice(7);
+    return customDashboards.find((d) => d.id === id) ?? null;
+  }, [activeTab, customDashboards]);
 
   return (
     <Box>
@@ -148,13 +188,17 @@ export default function Dashboard() {
             key={tab.key}
             value={tab.key}
             label={
-              <PinTabLabel
-                label={tab.label}
-                isDefault={preferredTab === tab.key}
-                onTogglePin={() => togglePin(tab.key)}
-                setAsDefaultTooltip={t("dashboard.pinAsDefault")}
-                unsetAsDefaultTooltip={t("dashboard.unpinDefault")}
-              />
+              tab.pinnable ? (
+                <PinTabLabel
+                  label={tab.label}
+                  isDefault={computedDefaultTab === tab.key}
+                  onTogglePin={() => togglePin(tab.key)}
+                  setAsDefaultTooltip={t("dashboard.pinAsDefault")}
+                  unsetAsDefaultTooltip={t("dashboard.unpinDefault")}
+                />
+              ) : (
+                tab.label
+              )
             }
           />
         ))}
@@ -163,6 +207,7 @@ export default function Dashboard() {
       {activeTab === "overview" && <OverviewTab />}
       {activeTab === "workspace" && <WorkspaceTab />}
       {activeTab === "admin" && isAdmin && <AdminTab />}
+      {activeDashboard && <CustomDashboardTab dashboard={activeDashboard} />}
     </Box>
   );
 }

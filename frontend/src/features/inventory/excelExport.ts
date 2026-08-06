@@ -247,7 +247,11 @@ function buildCardRowForType(
   for (const fieldKey of attrFieldKeys) {
     if (attrIsCost.get(fieldKey) && !canViewCosts) continue;
     const val = (card.attributes || {})[fieldKey];
-    row[`attr_${fieldKey}`] = Array.isArray(val) ? val.join(", ") : (val ?? "");
+    row[`attr_${fieldKey}`] = Array.isArray(val)
+      ? val.length > 0 && typeof val[0] === "object" && val[0] !== null
+        ? JSON.stringify(val)
+        : val.join(", ")
+      : (val ?? "");
   }
 
   for (const rt of inlineRelTypes) {

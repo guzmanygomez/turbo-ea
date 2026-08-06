@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
@@ -9,6 +9,8 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import TextField from "@mui/material/TextField";
 import FormControlLabel from "@mui/material/FormControlLabel";
+import FormGroup from "@mui/material/FormGroup";
+import Checkbox from "@mui/material/Checkbox";
 import Switch from "@mui/material/Switch";
 import Chip from "@mui/material/Chip";
 import IconButton from "@mui/material/IconButton";
@@ -18,6 +20,7 @@ import Snackbar from "@mui/material/Snackbar";
 import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
 import CircularProgress from "@mui/material/CircularProgress";
+import Divider from "@mui/material/Divider";
 import MaterialSymbol from "@/components/MaterialSymbol";
 import ColorPicker from "@/components/ColorPicker";
 import IconPicker from "@/components/IconPicker";
@@ -25,23 +28,29 @@ import KeyInput, { isValidKey } from "@/components/KeyInput";
 import CardLayoutEditor from "@/features/admin/CardLayoutEditor";
 import { api } from "@/api/client";
 import { LOCALE_LABELS } from "@/i18n";
+import { useResourceTypes } from "@/hooks/useResourceTypes";
+import { fieldLabel } from "@/hooks/useResolveLabel";
 import type {
   CardType as FSType,
   RelationType as RType,
   FieldDef,
   SectionDef,
+  VisibilityRuleSet,
+  FileExtractionScenario,
 } from "@/types";
 import { emptyField } from "./helpers";
 import FieldEditorDialog from "./FieldEditorDialog";
 import DataQualityPanel from "./DataQualityPanel";
 import StakeholderRolePanel from "./StakeholderRolePanel";
 import TranslationDialog from "./TranslationDialog";
+import VisibilityRulesDialog from "./VisibilityRulesDialog";
+import ExtractionScenarioDialog from "./ExtractionScenarioDialog";
 
 /* ------------------------------------------------------------------ */
 /*  Type Detail Dialog (full-width, 2-panel layout)                    */
 /* ------------------------------------------------------------------ */
 
-type TabKey = "main" | "relations" | "stakeholders" | "dataQuality";
+type TabKey = "main" | "relations" | "stakeholders" | "dataQuality" | "fileUpload";
 
 export interface TypeDrawerProps {
   open: boolean;
@@ -65,6 +74,7 @@ export default function TypeDetailDrawer({
   const { t, i18n } = useTranslation(["admin", "common"]);
   const locale = i18n.language;
   const cardTypeKey = types.find((ct) => ct.key === typeKey) || null;
+  const { fileCategories } = useResourceTypes();
 
   /* --- Editable header state --- */
   const [label, setLabel] = useState("");
@@ -122,7 +132,46 @@ export default function TypeDetailDrawer({
     cardCount: number | null; // null = loading
   } | null>(null);
 
+  /* --- Visibility rules editor --- */
+  const [visibilityRulesTarget, setVisibilityRulesTarget] = useState<{
+    type: "field" | "section";
+    sectionIdx: number;
+    fieldIdx?: number;
+  } | null>(null);
+
   /* --- Add section --- */
+
+  /* --- Delete type confirmation --- */
+  const [deleteTypeConfirm, setDeleteTypeConfirm] = useState<{
+    cardCount: number | null; // null = loading
+  } | null>(null);
+
+  /* --- AI Field Extraction scenarios --- */
+  const [scenarios, setScenarios] = useState<FileExtractionScenario[]>([]);
+  const [scenariosLoading, setScenariosLoading] = useState(false);
+  const [scenarioDialogOpen, setScenarioDialogOpen] = useState(false);
+  const [editingScenario, setEditingScenario] = useState<FileExtractionScenario | null>(null);
+  const [deleteScenarioId, setDeleteScenarioId] = useState<string | null>(null);
+
+  const loadScenarios = useCallback(async (typeKey: string) => {
+    setScenariosLoading(true);
+    try {
+      const data = await api.get<FileExtractionScenario[]>(
+        `/file-extraction/scenarios?card_type_key=${encodeURIComponent(typeKey)}`,
+      );
+      setScenarios(data);
+    } catch {
+      setScenarios([]);
+    } finally {
+      setScenariosLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "fileUpload" && cardTypeKey) {
+      loadScenarios(cardTypeKey.key);
+    }
+  }, [tab, cardTypeKey, loadScenarios]);
 
   /* --- Calculated fields map (type_key → field_keys[]) --- */
   const [calculatedFieldKeys, setCalculatedFieldKeys] = useState<string[]>([]);
@@ -231,6 +280,46 @@ export default function TypeDetailDrawer({
     (acc[f.section] ??= []).push({ key: f.key, label: f.label });
     return acc;
   }, {});
+  const syntheticFields: FieldDef[] = [
+    ...(cardTypeKey.subtypes && cardTypeKey.subtypes.length > 0
+      ? [{
+          key: "__subtype",
+          label: t("metamodel.visibilityRules.fieldSubtype"),
+          type: "single_select" as const,
+          options: cardTypeKey.subtypes.map((st) => ({ key: st.key, label: st.label })),
+          built_in: true,
+        }]
+      : []),
+    {
+      key: "__lifecycle_phase",
+      label: t("metamodel.visibilityRules.fieldLifecyclePhase"),
+      type: "single_select" as const,
+      options: [
+        { key: "plan", label: t("common:lifecycle.plan") },
+        { key: "phaseIn", label: t("common:lifecycle.phaseIn") },
+        { key: "active", label: t("common:lifecycle.active") },
+        { key: "phaseOut", label: t("common:lifecycle.phaseOut") },
+        { key: "endOfLife", label: t("common:lifecycle.endOfLife") },
+      ],
+      built_in: true,
+    },
+    {
+      key: "__approval_status",
+      label: t("metamodel.visibilityRules.fieldApprovalStatus"),
+      type: "single_select" as const,
+      options: [
+        { key: "DRAFT", label: t("common:status.draft") },
+        { key: "APPROVED", label: t("common:status.approved") },
+        { key: "BROKEN", label: t("common:status.broken") },
+        { key: "REJECTED", label: t("common:status.rejected") },
+      ],
+      built_in: true,
+    },
+  ];
+  const allFieldsFlat: FieldDef[] = [
+    ...syntheticFields,
+    ...(cardTypeKey.fields_schema || []).flatMap((s) => s.fields),
+  ];
 
   const openSubtypeTemplate = (subKey: string) => {
     const sub = (cardTypeKey.subtypes || []).find((s) => s.key === subKey);
@@ -275,6 +364,63 @@ export default function TypeDetailDrawer({
     setEditingFieldIdx(fieldIdx);
     setEditingField({ ...cardTypeKey.fields_schema[sectionIdx].fields[fieldIdx] });
     setFieldDialogOpen(true);
+  };
+
+  const openFieldVisibilityRules = (sectionIdx: number, fieldIdx: number) => {
+    setVisibilityRulesTarget({ type: "field", sectionIdx, fieldIdx });
+  };
+
+  const openSectionVisibilityRules = (sectionIdx: number) => {
+    setVisibilityRulesTarget({ type: "section", sectionIdx });
+  };
+
+  const handleSaveVisibilityRules = async (rules: VisibilityRuleSet | null) => {
+    if (!visibilityRulesTarget || !cardTypeKey) return;
+    try {
+      const schema: SectionDef[] = cardTypeKey.fields_schema.map((s) => ({
+        ...s,
+        fields: [...s.fields],
+      }));
+      if (visibilityRulesTarget.type === "field" && visibilityRulesTarget.fieldIdx !== undefined) {
+        const field = { ...schema[visibilityRulesTarget.sectionIdx].fields[visibilityRulesTarget.fieldIdx] };
+        if (rules) {
+          field.visibility_rules = rules;
+        } else {
+          delete field.visibility_rules;
+        }
+        schema[visibilityRulesTarget.sectionIdx].fields[visibilityRulesTarget.fieldIdx] = field;
+      } else if (visibilityRulesTarget.type === "section") {
+        const section = { ...schema[visibilityRulesTarget.sectionIdx] };
+        if (rules) {
+          section.visibility_rules = rules;
+        } else {
+          delete section.visibility_rules;
+        }
+        schema[visibilityRulesTarget.sectionIdx] = section;
+      }
+      await api.patch(`/metamodel/types/${cardTypeKey.key}`, { fields_schema: schema });
+      onRefresh();
+      setVisibilityRulesTarget(null);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : t("metamodel.typeDrawer.failedToSaveField"));
+    }
+  };
+
+  /* --- File category restrictions --- */
+  const handleToggleFileCategory = async (catKey: string) => {
+    if (!cardTypeKey) return;
+    const secCfg = (cardTypeKey.section_config || {}) as Record<string, unknown>;
+    const current = (secCfg.allowed_file_categories as string[] | undefined) ?? fileCategories.map((c) => c.key);
+    const next = current.includes(catKey) ? current.filter((k) => k !== catKey) : [...current, catKey];
+    const newAllowed = next.length === fileCategories.length ? undefined : next;
+    try {
+      await api.patch(`/metamodel/types/${cardTypeKey.key}`, {
+        section_config: { ...secCfg, allowed_file_categories: newAllowed },
+      });
+      onRefresh();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : t("metamodel.typeDrawer.failedToSave"));
+    }
   };
 
   const handleSaveField = async (field: FieldDef) => {
@@ -394,6 +540,27 @@ export default function TypeDetailDrawer({
     }
   };
 
+  /* --- Delete type (custom types only) --- */
+  const handlePromptDeleteType = () => {
+    setDeleteTypeConfirm({ cardCount: null });
+    api
+      .get<{ items: unknown[]; total: number }>(`/cards?type=${cardTypeKey.key}&page_size=1`)
+      .then((resp) => setDeleteTypeConfirm({ cardCount: resp.total }))
+      .catch(() => setDeleteTypeConfirm({ cardCount: 0 }));
+  };
+
+  const confirmDeleteType = async () => {
+    try {
+      await api.delete(`/metamodel/types/${cardTypeKey.key}`);
+      setDeleteTypeConfirm(null);
+      onClose();
+      onRefresh();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : t("metamodel.typeDrawer.failedToDeleteType"));
+      setDeleteTypeConfirm(null);
+    }
+  };
+
   /* --- Hide / Unhide --- */
   const handleToggleHidden = async () => {
     try {
@@ -463,6 +630,13 @@ export default function TypeDetailDrawer({
               />
             </IconButton>
           </Tooltip>
+          {!cardTypeKey.built_in && (
+            <Tooltip title={t("metamodel.typeDrawer.deleteType")}>
+              <IconButton size="small" color="error" onClick={handlePromptDeleteType}>
+                <MaterialSymbol icon="delete" size={20} />
+              </IconButton>
+            </Tooltip>
+          )}
           <Button
             variant="contained"
             size="small"
@@ -489,6 +663,7 @@ export default function TypeDetailDrawer({
           <Tab value="relations" label={t("metamodel.typeDrawer.relations")} />
           <Tab value="stakeholders" label={t("metamodel.stakeholderPanel.title")} />
           <Tab value="dataQuality" label={t("metamodel.dataQuality.title")} />
+          <Tab value="fileUpload" label={t("metamodel.typeDrawer.tabFileUpload")} />
         </Tabs>
       </Box>
 
@@ -628,6 +803,8 @@ export default function TypeDetailDrawer({
             promptDeleteField={promptDeleteField}
             promptDeleteSection={promptDeleteSection}
             calculatedFieldKeys={calculatedFieldKeys}
+            openFieldVisibilityRules={openFieldVisibilityRules}
+            openSectionVisibilityRules={openSectionVisibilityRules}
           />
         )}
         </>
@@ -731,7 +908,190 @@ export default function TypeDetailDrawer({
         {tab === "dataQuality" && (
           <DataQualityPanel cardType={cardTypeKey} onRefresh={onRefresh} />
         )}
+
+        {/* -- File Upload tab -- */}
+        {tab === "fileUpload" && (
+          <Box>
+            <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 0.5 }}>
+              {t("metamodel.fileUpload.allowedCategories")}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {t("metamodel.fileUpload.helpText")}
+            </Typography>
+            {fileCategories.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                {t("metamodel.fileUpload.noCategories")}
+              </Typography>
+            ) : (
+              <FormGroup>
+                {fileCategories.map((cat) => {
+                  const allowedCats = (cardTypeKey.section_config as Record<string, unknown> | undefined)?.allowed_file_categories as string[] | undefined;
+                  const isChecked = !allowedCats || allowedCats.includes(cat.key);
+                  return (
+                    <FormControlLabel
+                      key={cat.key}
+                      control={
+                        <Checkbox
+                          checked={isChecked}
+                          onChange={() => handleToggleFileCategory(cat.key)}
+                          size="small"
+                        />
+                      }
+                      label={fieldLabel(cat, locale)}
+                    />
+                  );
+                })}
+              </FormGroup>
+            )}
+
+            {/* --- AI Field Extraction section --- */}
+            <Divider sx={{ my: 3 }} />
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.5 }}>
+              <Typography variant="subtitle1" fontWeight={700}>
+                {t("metamodel.fileUpload.aiExtraction")}
+              </Typography>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<MaterialSymbol icon="add" />}
+                onClick={() => { setEditingScenario(null); setScenarioDialogOpen(true); }}
+              >
+                {t("metamodel.fileUpload.addScenario")}
+              </Button>
+            </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {t("metamodel.fileUpload.aiExtractionHelp")}
+            </Typography>
+
+            {scenariosLoading ? (
+              <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
+                <CircularProgress size={24} />
+              </Box>
+            ) : scenarios.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                {t("metamodel.fileUpload.noScenarios")}
+              </Typography>
+            ) : (
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+                {scenarios.map((sc) => (
+                  <Box
+                    key={sc.id}
+                    sx={{
+                      border: 1,
+                      borderColor: "divider",
+                      borderRadius: 1,
+                      px: 2,
+                      py: 1.5,
+                      opacity: sc.is_active ? 1 : 0.55,
+                    }}
+                  >
+                    <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 1 }}>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                          {sc.is_active ? null : (
+                            <Chip label="inactive" size="small" sx={{ mr: 1, fontSize: 10 }} />
+                          )}
+                          {sc.instructions.length > 120
+                            ? sc.instructions.slice(0, 120) + "…"
+                            : sc.instructions}
+                        </Typography>
+                        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                          {sc.target_fields.map((fk) => (
+                            <Chip key={fk} label={fk} size="small" variant="outlined" />
+                          ))}
+                        </Box>
+                        {(sc.linked_subtypes.length > 0 || sc.linked_file_categories.length > 0) && (
+                          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
+                            {sc.linked_subtypes.length > 0 && (
+                              <>{t("metamodel.fileUpload.scenarioLinkedSubtypes")}: {sc.linked_subtypes.join(", ")} &nbsp;</>
+                            )}
+                            {sc.linked_file_categories.length > 0 && (
+                              <>{t("metamodel.fileUpload.scenarioLinkedCategories")}: {sc.linked_file_categories.join(", ")}</>
+                            )}
+                          </Typography>
+                        )}
+                      </Box>
+                      <Box sx={{ display: "flex", gap: 0.5, flexShrink: 0 }}>
+                        <Tooltip title={t("metamodel.fileUpload.editScenario")}>
+                          <IconButton
+                            size="small"
+                            onClick={() => { setEditingScenario(sc); setScenarioDialogOpen(true); }}
+                          >
+                            <MaterialSymbol icon="edit" size={18} />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title={t("metamodel.fileUpload.deleteScenario")}>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => setDeleteScenarioId(sc.id)}
+                          >
+                            <MaterialSymbol icon="delete" size={18} />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    </Box>
+                  </Box>
+                ))}
+              </Box>
+            )}
+          </Box>
+        )}
       </Box>
+
+      {/* --- AI Extraction Scenario create/edit dialog --- */}
+      {cardTypeKey && (
+        <ExtractionScenarioDialog
+          open={scenarioDialogOpen}
+          cardType={cardTypeKey}
+          scenario={editingScenario}
+          fileCategories={fileCategories}
+          locale={locale}
+          onClose={() => setScenarioDialogOpen(false)}
+          onSave={async (data) => {
+            if (editingScenario) {
+              await api.patch(`/file-extraction/scenarios/${editingScenario.id}`, data);
+            } else {
+              await api.post("/file-extraction/scenarios", {
+                ...data,
+                card_type_key: cardTypeKey.key,
+              });
+            }
+            setScenarioDialogOpen(false);
+            await loadScenarios(cardTypeKey.key);
+          }}
+        />
+      )}
+
+      {/* --- Delete scenario confirmation dialog --- */}
+      <Dialog
+        open={!!deleteScenarioId}
+        onClose={() => setDeleteScenarioId(null)}
+        maxWidth="xs"
+        fullWidth
+        disableRestoreFocus
+      >
+        <DialogTitle>{t("metamodel.fileUpload.deleteScenario")}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">{t("metamodel.fileUpload.deleteScenarioConfirm")}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteScenarioId(null)}>{t("common:actions.cancel")}</Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={async () => {
+              if (deleteScenarioId && cardTypeKey) {
+                await api.delete(`/file-extraction/scenarios/${deleteScenarioId}`);
+                setDeleteScenarioId(null);
+                await loadScenarios(cardTypeKey.key);
+              }
+            }}
+          >
+            {t("common:actions.delete", "Delete")}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* --- Field deletion confirmation dialog --- */}
       <Dialog open={!!deleteFieldConfirm} onClose={() => setDeleteFieldConfirm(null)} maxWidth="xs" fullWidth disableRestoreFocus>
@@ -802,6 +1162,56 @@ export default function TypeDetailDrawer({
             onClick={confirmDeleteSection}
           >
             {t("metamodel.typeDrawer.deleteSection")}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* --- Delete type confirmation dialog --- */}
+      <Dialog
+        open={!!deleteTypeConfirm}
+        onClose={() => setDeleteTypeConfirm(null)}
+        maxWidth="xs"
+        fullWidth
+        disableRestoreFocus
+      >
+        <DialogTitle>{t("metamodel.typeDrawer.deleteType")}</DialogTitle>
+        <DialogContent>
+          {deleteTypeConfirm && (
+            <>
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                {t("metamodel.typeDrawer.deleteTypeConfirm", { label: cardTypeKey.label })}
+              </Typography>
+              {deleteTypeConfirm.cardCount === null ? (
+                <Alert severity="info" icon={<CircularProgress size={18} />}>
+                  {t("metamodel.typeDrawer.checkingTypeUsage")}
+                </Alert>
+              ) : deleteTypeConfirm.cardCount > 0 ? (
+                <Alert severity="error">
+                  <span
+                    dangerouslySetInnerHTML={{
+                      __html: t("metamodel.typeDrawer.typeHasCards", {
+                        count: deleteTypeConfirm.cardCount,
+                      }),
+                    }}
+                  />
+                </Alert>
+              ) : (
+                <Alert severity="warning">{t("metamodel.typeDrawer.typeSafeToDelete")}</Alert>
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteTypeConfirm(null)}>{t("common:actions.cancel")}</Button>
+          <Button
+            variant="contained"
+            color="error"
+            disabled={
+              deleteTypeConfirm?.cardCount === null || (deleteTypeConfirm?.cardCount ?? 0) > 0
+            }
+            onClick={confirmDeleteType}
+          >
+            {t("common:actions.delete")}
           </Button>
         </DialogActions>
       </Dialog>
@@ -886,6 +1296,31 @@ export default function TypeDetailDrawer({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* --- Visibility rules dialog --- */}
+      {visibilityRulesTarget && cardTypeKey && (() => {
+        const { type, sectionIdx, fieldIdx } = visibilityRulesTarget;
+        const section = cardTypeKey.fields_schema[sectionIdx];
+        const targetLabel =
+          type === "field" && fieldIdx !== undefined
+            ? section.fields[fieldIdx].label
+            : section.section;
+        const initialRules =
+          type === "field" && fieldIdx !== undefined
+            ? section.fields[fieldIdx].visibility_rules
+            : section.visibility_rules;
+        return (
+          <VisibilityRulesDialog
+            open
+            onClose={() => setVisibilityRulesTarget(null)}
+            targetLabel={targetLabel}
+            targetType={type}
+            initialRules={initialRules}
+            onSave={handleSaveVisibilityRules}
+            allFields={allFieldsFlat}
+          />
+        );
+      })()}
 
       <Snackbar
         open={!!snack}

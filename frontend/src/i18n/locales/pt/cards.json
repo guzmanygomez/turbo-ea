@@ -617,5 +617,9 @@
   "todos.recurrence.months_one": "Todos os meses",
   "todos.recurrence.months_other": "A cada {{count}} meses",
   "todos.recurrence.years_one": "Todos os anos",
-  "todos.recurrence.years_other": "A cada {{count}} anos"
+  "todos.recurrence.years_other": "A cada {{count}} anos",
+  "table.addRow": "Adicionar linha",
+  "table.rowCount_one": "{{count}} linha",
+  "table.rowCount_other": "{{count}} linhas",
+  "table.emptyHint": "Sem linhas ainda"
 }

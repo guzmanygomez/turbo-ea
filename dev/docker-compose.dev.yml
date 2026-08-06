@@ -28,6 +28,8 @@ services:
       context: .
       dockerfile: Dockerfile
       target: ollama
+    volumes:
+      - C:/certs/zscaler-root.pem:/etc/ssl/certs/zscaler-root.pem:ro
 
   mcp-server:
     build:

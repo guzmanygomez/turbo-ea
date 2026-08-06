@@ -16,6 +16,7 @@ from app.models.architecture_decision import ArchitectureDecision
 from app.models.architecture_decision_card import ArchitectureDecisionCard
 from app.models.bookmark import Bookmark
 from app.models.comment import Comment
+from app.models.custom_dashboard import CustomDashboard
 from app.models.diagram import Diagram
 from app.models.diagram_favorite import DiagramFavorite
 from app.models.diagram_group import DiagramGroup
@@ -204,4 +205,9 @@ ENTITY_SECTIONS: tuple[EntitySection, ...] = (
         card_fk_columns=("card_id",),
         user_fk_columns=("user_id",),
     ),
+    # --- Custom dashboards -----------------------------------------------
+    # audience_groups / default_for_groups are JSONB UUID arrays referencing
+    # user_groups.id — those UUIDs are preserved on import (UUIDMixin), so
+    # the references remain valid without special FK remapping.
+    EntitySection("CustomDashboards", CustomDashboard, user_fk_columns=("owner_id",)),
 )

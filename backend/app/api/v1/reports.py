@@ -66,7 +66,12 @@ def _current_lifecycle_phase(lifecycle: dict | None) -> str | None:
 
 
 @router.get("/dashboard")
-async def dashboard(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+async def dashboard(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+    type_key: str | None = Query(None),
+    subtype: str | None = Query(None),
+):
     await PermissionService.require_permission(db, user, "reports.ea_dashboard")
     # Count by type
     type_counts = await db.execute(
@@ -174,6 +179,33 @@ async def dashboard(db: AsyncSession = Depends(get_db), user: User = Depends(get
     previous_snapshot = await get_comparison_snapshot(db, days_ago=30)
     trends = compute_trend_block(current=current_kpis, previous=previous_snapshot)
 
+    # Optional filtered KPIs — computed only when type_key or category filter is requested.
+    # Returned alongside the unfiltered fields so existing consumers are unaffected.
+    filtered_kpis: dict | None = None
+    if type_key:
+        type_conditions = [Card.status == "ACTIVE", Card.type == type_key]
+        if subtype:
+            type_conditions.append(Card.subtype == subtype)
+
+        f_total_r = await db.execute(
+            select(func.count(Card.id)).where(*type_conditions)
+        )
+        f_total = f_total_r.scalar() or 0
+        f_approved_r = await db.execute(
+            select(func.count(Card.id))
+            .where(*type_conditions, Card.approval_status == "APPROVED")
+        )
+        f_approved = f_approved_r.scalar() or 0
+        f_dq_r = await db.execute(
+            select(func.avg(Card.data_quality)).where(*type_conditions)
+        )
+        f_dq = round(f_dq_r.scalar() or 0, 1)
+        filtered_kpis = {
+            "total": f_total,
+            "approved": f_approved,
+            "avg_data_quality": f_dq,
+        }
+
     return {
         "total_cards": total,
         "by_type": by_type,
@@ -183,6 +215,7 @@ async def dashboard(db: AsyncSession = Depends(get_db), user: User = Depends(get
         "lifecycle_distribution": lifecycle_dist,
         "recent_events": recent_events,
         "trends": trends,
+        "filtered_kpis": filtered_kpis,
     }
 
 

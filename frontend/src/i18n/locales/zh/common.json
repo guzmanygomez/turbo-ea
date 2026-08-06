@@ -350,5 +350,6 @@
   "dashboard.workspace.andMore_one": "另外 {{count}} 个",
   "dashboard.workspace.andMore_other": "另外 {{count}} 个",
   "actions.undo": "撤销",
-  "dashboard.workspace.favoriteRemoved": "已将「{{name}}」从收藏中移除"
+  "dashboard.workspace.favoriteRemoved": "已将「{{name}}」从收藏中移除",
+  "fieldTypes.table": "表格"
 }

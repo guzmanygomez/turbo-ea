@@ -247,6 +247,15 @@ APP_PERMISSIONS: dict[str, dict] = {
             ),
         },
     },
+    "dashboard": {
+        "label": "Custom Dashboards",
+        "permissions": {
+            "dashboard.manage": (
+                "Create, edit, publish, and delete custom dashboards. "
+                "Viewing is governed by group membership, not this permission."
+            ),
+        },
+    },
 }
 
 # Flat set for quick validation
@@ -384,6 +393,7 @@ BPM_ADMIN_PERMISSIONS: dict[str, bool] = {
     "admin.impersonate": False,
     "admin.export_workspace": False,
     "admin.import_workspace": False,
+    "dashboard.manage": False,
 }
 
 MEMBER_PERMISSIONS: dict[str, bool] = {
@@ -461,6 +471,7 @@ MEMBER_PERMISSIONS: dict[str, bool] = {
     "admin.impersonate": False,
     "admin.export_workspace": False,
     "admin.import_workspace": False,
+    "dashboard.manage": False,
 }
 
 VIEWER_PERMISSIONS: dict[str, bool] = {
@@ -538,6 +549,7 @@ VIEWER_PERMISSIONS: dict[str, bool] = {
     "admin.impersonate": False,
     "admin.export_workspace": False,
     "admin.import_workspace": False,
+    "dashboard.manage": False,
 }
 
 # ---------------------------------------------------------------------------

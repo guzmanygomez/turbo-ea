@@ -449,21 +449,27 @@ async def _call_ollama(
     provider_url: str,
     model: str,
     messages: list[dict[str, str]],
+    extra_options: dict[str, Any] | None = None,
+    request_timeout: float = 120.0,
 ) -> dict[str, Any]:
     """Call an Ollama-compatible /api/chat endpoint."""
     client = await _get_llm_client()
     url = f"{provider_url.rstrip('/')}/api/chat"
+
+    ollama_options: dict[str, Any] = {"temperature": 0.1}
+    if extra_options:
+        ollama_options.update(extra_options)
 
     payload = {
         "model": model,
         "messages": messages,
         "stream": False,
         "format": "json",
-        "options": {"temperature": 0.1},
+        "options": ollama_options,
     }
 
     try:
-        resp = await client.post(url, json=payload)
+        resp = await client.post(url, json=payload, timeout=request_timeout)
         resp.raise_for_status()
     except httpx.HTTPError as exc:
         logger.warning("Ollama API call failed: %s", exc)
@@ -598,7 +604,6 @@ async def _call_anthropic(
         "model": model,
         "max_tokens": 4096,
         "messages": chat_messages,
-        "temperature": 0.1,
     }
     if system_text:
         payload["system"] = system_text
@@ -606,13 +611,26 @@ async def _call_anthropic(
     try:
         resp = await client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        logger.warning(
+            "Anthropic API call failed: %s — %s",
+            exc.response.status_code,
+            exc.response.text[:400],
+        )
+        raise
     except httpx.HTTPError as exc:
-        logger.warning("Anthropic API call failed: %s", type(exc).__name__)
+        logger.warning("Anthropic API call failed: %s", exc)
         raise
 
     data = resp.json()
     content_blocks = data.get("content", [])
-    text = content_blocks[0].get("text", "{}") if content_blocks else "{}"
+    # Find the first text block — skip thinking/redacted_thinking blocks emitted
+    # by extended-thinking models (e.g. claude-sonnet-5).
+    text = "{}"
+    for block in content_blocks:
+        if block.get("type") == "text":
+            text = block.get("text", "{}")
+            break
     return _parse_llm_content(text)
 
 
@@ -624,10 +642,14 @@ async def call_llm(
     provider_type: str = "ollama",
     api_key: str = "",
     api_version: str = DEFAULT_AZURE_API_VERSION,
+    extra_options: dict[str, Any] | None = None,
+    request_timeout: float = 120.0,
 ) -> dict[str, Any]:
     """Dispatch an LLM call to the configured provider.
 
     Supported provider_type values: "ollama", "openai", "azure_openai", "anthropic".
+    extra_options is forwarded to the Ollama options block (e.g. {"num_ctx": 4096}).
+    request_timeout overrides the per-request HTTP timeout (Ollama only).
     """
     if provider_type == "openai":
         return await _call_openai_compatible(provider_url, api_key, model, messages)
@@ -635,7 +657,9 @@ async def call_llm(
         return await _call_azure_openai(provider_url, api_key, model, messages, api_version)
     if provider_type == "anthropic":
         return await _call_anthropic(provider_url, api_key, model, messages)
-    return await _call_ollama(provider_url, model, messages)
+    return await _call_ollama(
+        provider_url, model, messages, extra_options=extra_options, request_timeout=request_timeout
+    )
 
 
 # ---------------------------------------------------------------------------

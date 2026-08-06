@@ -617,5 +617,9 @@
   "todos.recurrence.months_one": "Каждый месяц",
   "todos.recurrence.months_other": "Каждые {{count}} мес.",
   "todos.recurrence.years_one": "Каждый год",
-  "todos.recurrence.years_other": "Каждые {{count}} лет"
+  "todos.recurrence.years_other": "Каждые {{count}} лет",
+  "table.addRow": "Добавить строку",
+  "table.rowCount_one": "{{count}} строка",
+  "table.rowCount_other": "{{count}} строк(и)",
+  "table.emptyHint": "Строк пока нет"
 }

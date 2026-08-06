@@ -13,6 +13,7 @@ from app.api.v1 import (
     capability_catalogue,
     cards,
     comments,
+    custom_dashboards,
     diagram_groups,
     diagrams,
     documents,
@@ -20,6 +21,7 @@ from app.api.v1 import (
     events,
     favorites,
     file_attachments,
+    file_extraction,
     metamodel,
     migration,
     mutation_batches,
@@ -43,6 +45,7 @@ from app.api.v1 import (
     tags,
     todos,
     turbolens,
+    user_groups,
     users,
     value_stream_catalogue,
     web_portals,
@@ -69,6 +72,7 @@ api_router.include_router(eol.router)
 api_router.include_router(events.router)
 api_router.include_router(mutation_batches.router)
 api_router.include_router(users.router)
+api_router.include_router(user_groups.router)
 api_router.include_router(notifications.router)
 api_router.include_router(surveys.router)
 api_router.include_router(settings.router)
@@ -95,8 +99,10 @@ api_router.include_router(risks.cards_risks_router)
 api_router.include_router(risk_mitigation_tasks.risks_router)
 api_router.include_router(risk_mitigation_tasks.tasks_router)
 api_router.include_router(file_attachments.router)
+api_router.include_router(file_extraction.router)
 api_router.include_router(favorites.router)
 api_router.include_router(capability_catalogue.router)
 api_router.include_router(process_catalogue.router)
 api_router.include_router(value_stream_catalogue.router)
 api_router.include_router(principles_catalogue.router)
+api_router.include_router(custom_dashboards.router)

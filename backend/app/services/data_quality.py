@@ -79,7 +79,11 @@ async def calc_data_quality(db: AsyncSession, card: Card) -> float:
                 continue
             total_weight += weight
             val = attrs.get(field["key"])
-            if val is not None and val != "" and val is not False:
+            if field.get("type") == "table":
+                is_filled = isinstance(val, list) and len(val) > 0
+            else:
+                is_filled = val is not None and val != "" and val is not False
+            if is_filled:
                 filled_weight += weight
 
     # Description bucket (admin-tunable; default weight 1, 0 = exclude)

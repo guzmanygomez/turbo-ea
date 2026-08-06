@@ -15,6 +15,7 @@ from app.database import get_db
 from app.models.role import Role
 from app.models.sso_invitation import SsoInvitation
 from app.models.user import DEFAULT_NOTIFICATION_PREFERENCES, DEFAULT_UI_PREFERENCES, User
+from app.models.user_group import UserGroupMember
 from app.services.permission_service import PermissionService
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -34,6 +35,7 @@ class UserCreate(BaseModel):
     # explicitly tagged «local» (with a password) lands as a local account
     # even in SSO-enabled tenants, and vice versa (#584 follow-up).
     auth_provider: Literal["local", "sso"] | None = None
+    group_ids: list[str] = []
 
 
 class UserUpdate(BaseModel):
@@ -44,6 +46,7 @@ class UserUpdate(BaseModel):
     password: str | None = None
     locale: str | None = None
     auth_provider: str | None = None  # admin only: "local" or "sso"
+    group_ids: list[str] | None = None
 
 
 class NotificationPreferencesUpdate(BaseModel):
@@ -79,7 +82,7 @@ class UserBulkDelete(BaseModel):
     ids: list[str]
 
 
-def _user_response(u: User) -> dict:
+def _user_response(u: User, group_ids: list[str] | None = None) -> dict:
     return {
         "id": str(u.id),
         "email": u.email,
@@ -93,6 +96,7 @@ def _user_response(u: User) -> dict:
         "ui_preferences": u.ui_preferences or DEFAULT_UI_PREFERENCES,
         "created_at": u.created_at.isoformat() if u.created_at else None,
         "last_login": u.last_login.isoformat() if u.last_login else None,
+        "group_ids": group_ids if group_ids is not None else [],
     }
 
 
@@ -128,7 +132,15 @@ async def list_users(
     if not include_inactive:
         stmt = stmt.where(User.is_active.is_(True))
     result = await db.execute(stmt)
-    return [_user_response(u) for u in result.scalars().all()]
+    users = result.scalars().all()
+
+    # Batch-load group memberships for all users
+    gm_result = await db.execute(select(UserGroupMember))
+    groups_by_user: dict[uuid.UUID, list[str]] = {}
+    for row in gm_result.scalars().all():
+        groups_by_user.setdefault(row.user_id, []).append(str(row.group_id))
+
+    return [_user_response(u, groups_by_user.get(u.id, [])) for u in users]
 
 
 @router.get("/invitations")
@@ -436,7 +448,11 @@ async def get_user(
     u = result.scalar_one_or_none()
     if not u:
         raise HTTPException(404, "User not found")
-    return _user_response(u)
+    gm_result = await db.execute(
+        select(UserGroupMember.group_id).where(UserGroupMember.user_id == u.id)
+    )
+    group_ids = [str(row[0]) for row in gm_result.all()]
+    return _user_response(u, group_ids)
 
 
 INVITE_ALLOWED_ROLES: set[str] = {"member", "viewer"}
@@ -553,6 +569,14 @@ async def create_user(
         )
         db.add(sso_inv)
 
+    # Apply group memberships
+    for gid_str in body.group_ids:
+        try:
+            gid = uuid.UUID(gid_str)
+        except ValueError:
+            continue
+        db.add(UserGroupMember(user_id=u.id, group_id=gid))
+
     await db.commit()
     await db.refresh(u)
 
@@ -560,7 +584,7 @@ async def create_user(
     # committed above, so we don't roll back on email failure — instead
     # we surface the SMTP error in the response so the admin can see it
     # and re-send (e.g. via the test-email endpoint after fixing creds).
-    response = _user_response(u)
+    response = _user_response(u, body.group_ids)
     if body.send_email:
         from app.services.email_service import _get_app_title, send_notification_email
 
@@ -696,11 +720,29 @@ async def update_user(
         # the user signs in for the first time (#539).
         u.password_setup_token = None
 
+    new_group_ids: list[str] | None = data.pop("group_ids", None)
+
     for field, value in data.items():
         setattr(u, field, value)
 
+    if new_group_ids is not None and is_admin:
+        from sqlalchemy import delete as sa_delete  # noqa: PLC0415
+
+        await db.execute(sa_delete(UserGroupMember).where(UserGroupMember.user_id == u.id))
+        for gid_str in new_group_ids:
+            try:
+                gid = uuid.UUID(gid_str)
+            except ValueError:
+                continue
+            db.add(UserGroupMember(user_id=u.id, group_id=gid))
+
     await db.commit()
-    return _user_response(u)
+
+    gm_result = await db.execute(
+        select(UserGroupMember.group_id).where(UserGroupMember.user_id == u.id)
+    )
+    group_ids = [str(row[0]) for row in gm_result.all()]
+    return _user_response(u, group_ids)
 
 
 @router.delete("/{user_id}", status_code=204)

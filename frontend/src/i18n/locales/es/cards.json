@@ -617,5 +617,9 @@
   "todos.recurrence.months_one": "Cada mes",
   "todos.recurrence.months_other": "Cada {{count}} meses",
   "todos.recurrence.years_one": "Cada año",
-  "todos.recurrence.years_other": "Cada {{count}} años"
+  "todos.recurrence.years_other": "Cada {{count}} años",
+  "table.addRow": "Añadir fila",
+  "table.rowCount_one": "{{count}} fila",
+  "table.rowCount_other": "{{count}} filas",
+  "table.emptyHint": "Sin filas todavía"
 }

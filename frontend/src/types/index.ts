@@ -1,4 +1,27 @@
-export type DashboardTabKey = "overview" | "workspace" | "admin";
+export type DashboardTabKey = "overview" | "workspace" | "admin" | `custom-${string}`;
+
+export interface DashboardWidget {
+  id: string;
+  type: string;
+  title: string;
+  w: 1 | 2 | 3;
+  config: Record<string, unknown>;
+}
+
+export interface CustomDashboard {
+  id: string;
+  name: string;
+  translations: Record<string, unknown>;
+  status: "draft" | "published";
+  audienceGroups: string[];
+  defaultForGroups: string[];
+  priority: number;
+  ownerId: string | null;
+  ownerName: string | null;
+  layout: DashboardWidget[];
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface UiPreferences {
   dashboard_default_tab?: DashboardTabKey;
@@ -25,6 +48,20 @@ export interface User {
   ui_preferences?: UiPreferences | null;
   impersonated_role?: string | null;
   impersonated_role_label?: string | null;
+  group_ids?: string[];
+}
+
+export interface UserGroup {
+  id: string;
+  key: string;
+  name: string;
+  description?: string | null;
+  color: string;
+  group_type: "domain" | "functional" | "other";
+  sort_order: number;
+  member_count?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface AppRole {
@@ -142,6 +179,39 @@ export interface FieldOption {
   _original?: boolean;
 }
 
+export interface TableColumn {
+  key: string;
+  label: string;
+  type: "text" | "number" | "date" | "cost";
+  translations?: TranslationMap;
+  // Transient, editor-only: marks a column that already existed when the editor
+  // opened (so its key is locked). Stripped before persisting.
+  _original?: boolean;
+}
+
+// ── Visibility Rules ─────────────────────────────────────────────
+
+export type VisibilityOperator = "eq" | "neq" | "in" | "not_in";
+
+export interface VisibilityRule {
+  field: string;
+  op: VisibilityOperator;
+  value: string | string[];
+}
+
+export interface VisibilityRuleGroup {
+  match: "all" | "any";
+  rules: VisibilityRule[];
+}
+
+/** When conditions evaluate to true the field/section is hidden. */
+export interface VisibilityRuleSet {
+  match: "all" | "any";
+  groups: VisibilityRuleGroup[];
+}
+
+// ── Field & Section Definitions ───────────────────────────────────
+
 export interface FieldDef {
   key: string;
   label: string;
@@ -154,14 +224,17 @@ export interface FieldDef {
     | "date"
     | "single_select"
     | "multiple_select"
-    | "url";
+    | "url"
+    | "table";
   options?: FieldOption[];
+  columns?: TableColumn[];
   required?: boolean;
   weight?: number;
   readonly?: boolean;
   group?: string;
   column?: 0 | 1;
   translations?: TranslationMap;
+  visibility_rules?: VisibilityRuleSet;
   // Set on built-in relation attribute "dimensions" (e.g. usageType,
   // flowDirection): the field definition is locked, but its options can be
   // managed. Custom relation dimensions are fully editable.
@@ -185,6 +258,7 @@ export interface SectionDef {
   columns?: 1 | 2;
   groups?: string[];
   translations?: TranslationMap;
+  visibility_rules?: VisibilityRuleSet;
 }
 
 export interface StakeholderRoleDefinition {
@@ -1937,6 +2011,19 @@ export interface TurboLensCommitProgress {
   initiative_id?: string;
   adr_id?: string;
   detail?: string;
+}
+
+// ── AI Field Extraction Scenarios ────────────────────────────────
+export interface FileExtractionScenario {
+  id: string;
+  card_type_key: string;
+  instructions: string;
+  target_fields: string[];
+  linked_subtypes: string[];
+  linked_file_categories: string[];
+  is_active: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 // ── Archive / delete with children + related cards ──────────────

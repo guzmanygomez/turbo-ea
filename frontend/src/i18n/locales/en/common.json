@@ -105,6 +105,7 @@
   "fieldTypes.url": "URL",
   "fieldTypes.singleSelect": "Single Select",
   "fieldTypes.multipleSelect": "Multiple Select",
+  "fieldTypes.table": "Table",
   "items_one": "{{count}} item",
   "items_other": "{{count}} items",
   "dashboard.title": "Dashboard",

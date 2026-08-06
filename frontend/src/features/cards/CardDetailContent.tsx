@@ -18,6 +18,7 @@ import { usePpmEnabled } from "@/hooks/usePpmEnabled";
 import { useGrcEnabled } from "@/hooks/useGrcEnabled";
 import { useCardTabActivity } from "@/hooks/useCardTabActivity";
 import { api } from "@/api/client";
+import { evaluateRuleSet } from "@/utils/visibilityRules";
 import {
   DescriptionSection,
   LifecycleSection,
@@ -182,6 +183,21 @@ export default function CardDetailContent({
     const st = typeConfig.subtypes.find((s) => s.key === card.subtype);
     return new Set(st?.hidden_fields ?? []);
   })();
+  // Attributes augmented with standard card properties for rule evaluation
+  const ruleAttributes: Record<string, unknown> = {
+    ...card.attributes,
+    __subtype: card.subtype ?? "",
+    __lifecycle_phase: card.lifecycle?.phase ?? "",
+    __approval_status: card.approval_status ?? "",
+  };
+  // Add fields hidden by visibility rules
+  for (const section of typeConfig?.fields_schema ?? []) {
+    for (const field of section.fields) {
+      if (field.visibility_rules && evaluateRuleSet(field.visibility_rules, ruleAttributes)) {
+        hiddenFieldKeys.add(field.key);
+      }
+    }
+  }
 
   const customSections = (typeConfig?.fields_schema || []).filter(
     (s) => s.section !== "__description",
@@ -337,6 +353,10 @@ export default function CardDetailContent({
       const idx = parseInt(key.split(":")[1], 10);
       const section = customSections[idx];
       if (!section) return null;
+      // Skip section hidden by visibility rules
+      if (section.visibility_rules && evaluateRuleSet(section.visibility_rules, ruleAttributes)) {
+        return null;
+      }
       // Skip section if all its fields are hidden for the active subtype
       if (
         hiddenFieldKeys.size > 0 &&

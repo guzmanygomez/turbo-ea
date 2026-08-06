@@ -1705,6 +1705,24 @@ export default function InventoryPage() {
                   cellEditorParams: { rows: 8, cols: 60, maxLength: 100000 },
                 }
               : {}),
+            ...(field.type === "table"
+              ? {
+                  sortable: false,
+                  filter: false,
+                  editable: false,
+                  cellRenderer: (p: { data?: Card }) => {
+                    const val = (p.data?.attributes || {})[field.key];
+                    const count = Array.isArray(val) ? val.length : 0;
+                    return count > 0 ? (
+                      <Chip
+                        size="small"
+                        label={t("columns.tableRowCount", { count })}
+                        variant="outlined"
+                      />
+                    ) : null;
+                  },
+                }
+              : {}),
           });
         }
       }

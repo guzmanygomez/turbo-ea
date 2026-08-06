@@ -8,6 +8,7 @@ from app.models.card import Card
 from app.models.card_type import CardType
 from app.models.comment import Comment
 from app.models.compliance_regulation import ComplianceRegulation
+from app.models.custom_dashboard import CustomDashboard
 from app.models.diagram import Diagram
 from app.models.diagram_favorite import DiagramFavorite
 from app.models.diagram_group import DiagramGroup, diagram_group_members
@@ -15,6 +16,7 @@ from app.models.document import Document
 from app.models.ea_principle import EAPrinciple
 from app.models.event import Event
 from app.models.file_attachment import FileAttachment
+from app.models.file_extraction_scenario import FileExtractionScenario
 from app.models.kpi_snapshot import KpiSnapshot
 from app.models.migration import IdentityMap, Migration, StagedRecord
 from app.models.mutation_batch import MutationBatch
@@ -66,6 +68,7 @@ from app.models.turbolens import (
 )
 from app.models.user import User
 from app.models.user_favorite import UserFavorite
+from app.models.user_group import UserGroup, UserGroupMember
 from app.models.web_portal import WebPortal
 from app.models.workspace_transfer import WorkspaceTransfer
 
@@ -81,6 +84,7 @@ __all__ = [
     "ArchitectureDecisionCard",
     "Base",
     "FileAttachment",
+    "FileExtractionScenario",
     "User",
     "Role",
     "StakeholderRoleDefinition",
@@ -141,5 +145,8 @@ __all__ = [
     "SnowStagedRecord",
     "SnowIdentityMap",
     "UserFavorite",
+    "UserGroup",
+    "UserGroupMember",
     "ResourceType",
+    "CustomDashboard",
 ]

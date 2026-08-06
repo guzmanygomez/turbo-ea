@@ -33,9 +33,11 @@ import { api } from "@/api/client";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { useThemeMode } from "@/hooks/useThemeMode";
 import { useIsRtl } from "@/hooks/useIsRtl";
-import type { User, SsoInvitation, AppRole } from "@/types";
+import OutlinedInput from "@mui/material/OutlinedInput";
+import type { User, SsoInvitation, AppRole, UserGroup } from "@/types";
 import MaterialSymbol from "@/components/MaterialSymbol";
 import RolesAdmin from "@/features/admin/RolesAdmin";
+import UserGroupsTab from "@/features/admin/UserGroupsTab";
 import UsersFilterSidebar, {
   EMPTY_USER_FILTERS,
   DEFAULT_USER_COLUMNS,
@@ -52,6 +54,7 @@ interface CreateUserFormState {
   password: string;
   role: string;
   send_email: boolean;
+  group_ids: string[];
 }
 
 const EMPTY_CREATE_USER: CreateUserFormState = {
@@ -60,6 +63,7 @@ const EMPTY_CREATE_USER: CreateUserFormState = {
   password: "",
   role: "member",
   send_email: true,
+  group_ids: [],
 };
 
 interface EditFormState {
@@ -68,6 +72,7 @@ interface EditFormState {
   password: string;
   role: string;
   auth_provider: string;
+  group_ids: string[];
 }
 
 /* ---- localStorage persistence helpers ---- */
@@ -127,6 +132,7 @@ export default function UsersAdmin() {
     password: "",
     role: "member",
     auth_provider: "local",
+    group_ids: [],
   });
   const [editError, setEditError] = useState<string | null>(null);
   const [editSubmitting, setEditSubmitting] = useState(false);
@@ -141,6 +147,8 @@ export default function UsersAdmin() {
 
   // Roles
   const [roles, setRoles] = useState<AppRole[]>([]);
+  // Groups
+  const [groups, setGroups] = useState<UserGroup[]>([]);
 
   // Pending invitations
   const [invitations, setInvitations] = useState<SsoInvitation[]>([]);
@@ -184,6 +192,15 @@ export default function UsersAdmin() {
     }
   }, []);
 
+  const fetchGroups = useCallback(async () => {
+    try {
+      const data = await api.get<UserGroup[]>("/user-groups");
+      setGroups(data);
+    } catch {
+      // Silently fail — groups are supplementary
+    }
+  }, []);
+
   const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
@@ -217,10 +234,11 @@ export default function UsersAdmin() {
 
   useEffect(() => {
     fetchRoles();
+    fetchGroups();
     fetchUsers();
     fetchInvitations();
     fetchSsoStatus();
-  }, [fetchRoles, fetchUsers, fetchInvitations, fetchSsoStatus]);
+  }, [fetchRoles, fetchGroups, fetchUsers, fetchInvitations, fetchSsoStatus]);
 
   // --- Inline role update ---
   const updateRole = useCallback(async (userId: string, role: string) => {
@@ -381,6 +399,7 @@ export default function UsersAdmin() {
           password: createUserForm.password || null,
           role: createUserForm.role,
           send_email: createUserForm.send_email,
+          group_ids: createUserForm.group_ids,
         }
       );
       setUsers((prev) => [...prev, created]);
@@ -411,6 +430,7 @@ export default function UsersAdmin() {
       password: "",
       role: user.role,
       auth_provider: user.auth_provider || "local",
+      group_ids: user.group_ids ?? [],
     });
     setEditError(null);
     setEditOpen(true);
@@ -422,11 +442,12 @@ export default function UsersAdmin() {
       setEditError(t("users.edit.requiredFields"));
       return;
     }
-    const payload: Record<string, string> = {
+    const payload: Record<string, unknown> = {
       email: editForm.email.trim(),
       display_name: editForm.display_name.trim(),
       role: editForm.role,
       auth_provider: editForm.auth_provider,
+      group_ids: editForm.group_ids,
     };
     if (editForm.password) {
       payload.password = editForm.password;
@@ -489,6 +510,8 @@ export default function UsersAdmin() {
 
   // Build a map from role key to AppRole for quick lookups
   const roleMap = useMemo(() => new Map(roles.map((r) => [r.key, r])), [roles]);
+  // Build a map from group id to UserGroup for quick lookups
+  const groupMap = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups]);
   const activeRoles = useMemo(() => roles.filter((r) => !r.is_archived), [roles]);
 
   // Helper: render a role chip
@@ -881,12 +904,51 @@ export default function UsersAdmin() {
             </Typography>
           ),
       },
+      {
+        field: "group_ids",
+        headerName: t("users.columns.groups"),
+        minWidth: 180,
+        flex: 1,
+        hide: !selectedColumns.has("groups"),
+        sortable: false,
+        cellRenderer: (p: { data?: User }) => {
+          const u = p.data;
+          if (!u || !u.group_ids || u.group_ids.length === 0) {
+            return (
+              <Typography variant="body2" color="text.disabled" sx={{ lineHeight: "48px" }}>
+                —
+              </Typography>
+            );
+          }
+          return (
+            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, alignItems: "center", height: "100%" }}>
+              {u.group_ids.map((id) => {
+                const g = groupMap.get(id);
+                return g ? (
+                  <Chip
+                    key={id}
+                    size="small"
+                    label={g.name}
+                    sx={{
+                      bgcolor: g.color + "22",
+                      color: g.color,
+                      fontWeight: 600,
+                      border: `1px solid ${g.color}44`,
+                    }}
+                  />
+                ) : null;
+              })}
+            </Box>
+          );
+        },
+      },
     ],
     [
       t,
       selectedColumns,
       activeRoles,
       roleMap,
+      groupMap,
       updateRole,
       renderRoleChip,
       formatDate,
@@ -943,6 +1005,7 @@ export default function UsersAdmin() {
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3 }}>
         <Tab label={t("users.tabs.users")} />
         <Tab label={t("users.tabs.roles")} />
+        <Tab label={t("users.tabs.groups")} />
       </Tabs>
 
       {/* ============================================================ */}
@@ -1182,6 +1245,47 @@ export default function UsersAdmin() {
                     ))}
                   </Select>
                 </FormControl>
+                {groups.length > 0 && (
+                  <FormControl fullWidth size="small">
+                    <InputLabel>{t("users.create.groups")}</InputLabel>
+                    <Select
+                      label={t("users.create.groups")}
+                      multiple
+                      value={createUserForm.group_ids}
+                      onChange={(e) =>
+                        setCreateUserForm((p) => ({
+                          ...p,
+                          group_ids: e.target.value as string[],
+                        }))
+                      }
+                      input={<OutlinedInput label={t("users.create.groups")} />}
+                      renderValue={(selected) => (
+                        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                          {(selected as string[]).map((id) => {
+                            const g = groups.find((gr) => gr.id === id);
+                            return g ? (
+                              <Chip
+                                key={id}
+                                size="small"
+                                label={g.name}
+                                sx={{ bgcolor: g.color + "22", color: g.color, fontWeight: 600 }}
+                              />
+                            ) : null;
+                          })}
+                        </Box>
+                      )}
+                    >
+                      {groups.map((g) => (
+                        <MenuItem key={g.id} value={g.id}>
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                            <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: g.color }} />
+                            {g.name}
+                          </Box>
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
                 <FormControlLabel
                   control={
                     <Checkbox
@@ -1334,6 +1438,47 @@ export default function UsersAdmin() {
                     {t("users.edit.archivedRoleWarning")}
                   </Alert>
                 )}
+                {groups.length > 0 && (
+                  <FormControl fullWidth size="small">
+                    <InputLabel>{t("users.edit.groups")}</InputLabel>
+                    <Select
+                      label={t("users.edit.groups")}
+                      multiple
+                      value={editForm.group_ids}
+                      onChange={(e) =>
+                        setEditForm((p) => ({
+                          ...p,
+                          group_ids: e.target.value as string[],
+                        }))
+                      }
+                      input={<OutlinedInput label={t("users.edit.groups")} />}
+                      renderValue={(selected) => (
+                        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                          {(selected as string[]).map((id) => {
+                            const g = groups.find((gr) => gr.id === id);
+                            return g ? (
+                              <Chip
+                                key={id}
+                                size="small"
+                                label={g.name}
+                                sx={{ bgcolor: g.color + "22", color: g.color, fontWeight: 600 }}
+                              />
+                            ) : null;
+                          })}
+                        </Box>
+                      )}
+                    >
+                      {groups.map((g) => (
+                        <MenuItem key={g.id} value={g.id}>
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                            <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: g.color }} />
+                            {g.name}
+                          </Box>
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
                 {editError && <Alert severity="error">{editError}</Alert>}
               </Stack>
             </DialogContent>
@@ -1357,6 +1502,11 @@ export default function UsersAdmin() {
       {/*  TAB 1 -- Roles                                              */}
       {/* ============================================================ */}
       {tab === 1 && <RolesAdmin />}
+
+      {/* ============================================================ */}
+      {/*  TAB 2 -- Groups                                             */}
+      {/* ============================================================ */}
+      {tab === 2 && <UserGroupsTab />}
     </Box>
   );
 }

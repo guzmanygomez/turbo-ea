@@ -49,6 +49,7 @@ export const USER_COLUMNS = [
   { key: "created_at", icon: "event", tKey: "users.columns.createdAt" as const },
   { key: "locale", icon: "language", tKey: "users.columns.locale" as const },
   { key: "pending_setup", icon: "hourglass_top", tKey: "users.columns.pendingSetup" as const },
+  { key: "groups", icon: "group", tKey: "users.columns.groups" as const },
 ];
 
 export const USER_COLUMN_KEYS = USER_COLUMNS.map((c) => c.key);

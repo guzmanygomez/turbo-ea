@@ -24,6 +24,7 @@
   "admin.metamodel": "Metamodel",
   "admin.usersAndRoles": "Brugere og roller",
   "admin.surveys": "Undersøgelser",
+  "admin.dashboards": "Dashboards",
   "admin.settings": "Indstillinger",
   "userMenu.notificationSettings": "Notifikationsindstillinger",
   "userMenu.darkMode": "Mørk tilstand",

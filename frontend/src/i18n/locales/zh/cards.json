@@ -617,5 +617,9 @@
   "todos.recurrence.months_one": "每月",
   "todos.recurrence.months_other": "每 {{count}} 月",
   "todos.recurrence.years_one": "每年",
-  "todos.recurrence.years_other": "每 {{count}} 年"
+  "todos.recurrence.years_other": "每 {{count}} 年",
+  "table.addRow": "添加行",
+  "table.rowCount_one": "{{count}} 行",
+  "table.rowCount_other": "{{count}} 行",
+  "table.emptyHint": "暂无行"
 }

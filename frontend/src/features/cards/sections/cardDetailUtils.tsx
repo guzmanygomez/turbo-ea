@@ -1,6 +1,8 @@
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Chip from "@mui/material/Chip";
+import Button from "@mui/material/Button";
+import IconButton from "@mui/material/IconButton";
 import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
 import Checkbox from "@mui/material/Checkbox";
@@ -161,6 +163,55 @@ export function FieldValue({
   // Guard: if value is an object/array and the field type doesn't expect it, coerce to string
   if (typeof value === "object" && !Array.isArray(value) && field.type !== "multiple_select") {
     return <Typography variant="body2">{safeString(value)}</Typography>;
+  }
+
+  if (field.type === "table") {
+    const rows = Array.isArray(value) ? (value as Record<string, unknown>[]) : [];
+    const cols = field.columns || [];
+    if (rows.length === 0) {
+      return <Typography variant="body2" color="text.secondary">—</Typography>;
+    }
+    const cellSx = { border: "1px solid", borderColor: "divider", px: 1, py: 0.5 } as const;
+    return (
+      <Box sx={{ overflowX: "auto", width: "100%" }}>
+        <Box
+          component="table"
+          sx={{
+            borderCollapse: "collapse",
+            fontSize: "0.8rem",
+            width: "100%",
+            "& th": { ...cellSx, bgcolor: "action.hover", fontWeight: 600, textAlign: "left" },
+          }}
+        >
+          <Box component="thead">
+            <Box component="tr">
+              <Box component="th" sx={{ ...cellSx, width: 36 }}>#</Box>
+              {cols.map((col) => (
+                <Box component="th" key={col.key}>{col.label}</Box>
+              ))}
+            </Box>
+          </Box>
+          <Box component="tbody">
+            {rows.map((row, i) => (
+              <Box component="tr" key={i}>
+                <Box component="td" sx={{ ...cellSx, textAlign: "center", color: "text.secondary" }}>
+                  {i + 1}
+                </Box>
+                {cols.map((col) => (
+                  <Box component="td" key={col.key} sx={cellSx}>
+                    {row[col.key] != null
+                      ? col.type === "cost" && currencyFmt
+                        ? currencyFmt.format(Number(row[col.key]))
+                        : String(row[col.key])
+                      : ""}
+                  </Box>
+                ))}
+              </Box>
+            ))}
+          </Box>
+        </Box>
+      </Box>
+    );
   }
 
   if (field.type === "single_select" && field.options) {
@@ -458,6 +509,152 @@ export function FieldEditor({
           sx={{ minWidth: 300 }}
         />
       );
+    case "table": {
+      const rows = Array.isArray(value) ? [...(value as Record<string, unknown>[])] : [];
+      const cols = field.columns || [];
+
+      const updateRow = (rowIdx: number, colKey: string, val: unknown) => {
+        const newRows = [...rows];
+        newRows[rowIdx] = { ...newRows[rowIdx], [colKey]: val };
+        onChange(newRows);
+      };
+
+      const addRow = () => {
+        const newRow: Record<string, unknown> = {};
+        for (const col of cols) {
+          newRow[col.key] = col.type === "number" || col.type === "cost" ? null : "";
+        }
+        onChange([...rows, newRow]);
+      };
+
+      const deleteRow = (rowIdx: number) => {
+        onChange(rows.filter((_, i) => i !== rowIdx));
+      };
+
+      const moveRow = (from: number, to: number) => {
+        const newRows = [...rows];
+        const [moved] = newRows.splice(from, 1);
+        newRows.splice(to, 0, moved);
+        onChange(newRows);
+      };
+
+      const cellSx = {
+        border: "1px solid",
+        borderColor: "divider",
+        p: 0.5,
+        verticalAlign: "middle",
+      } as const;
+
+      return (
+        <Box sx={{ overflowX: "auto", width: "100%" }}>
+          {rows.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              {t("table.emptyHint")}
+            </Typography>
+          ) : (
+            <Box
+              component="table"
+              sx={{
+                borderCollapse: "collapse",
+                width: "100%",
+                fontSize: "0.85rem",
+                "& th": {
+                  border: "1px solid",
+                  borderColor: "divider",
+                  px: 1,
+                  py: 0.5,
+                  bgcolor: "action.hover",
+                  fontWeight: 600,
+                  textAlign: "left",
+                },
+              }}
+            >
+              <Box component="thead">
+                <Box component="tr">
+                  <Box component="th" sx={{ width: 36 }}>#</Box>
+                  {cols.map((col) => (
+                    <Box component="th" key={col.key}>{col.label}</Box>
+                  ))}
+                  <Box component="th" sx={{ width: 96 }} />
+                </Box>
+              </Box>
+              <Box component="tbody">
+                {rows.map((row, rowIdx) => (
+                  <Box component="tr" key={rowIdx}>
+                    <Box component="td" sx={{ ...cellSx, textAlign: "center", color: "text.secondary", width: 36 }}>
+                      {rowIdx + 1}
+                    </Box>
+                    {cols.map((col) => (
+                      <Box component="td" key={col.key} sx={cellSx}>
+                        <TextField
+                          size="small"
+                          type={
+                            col.type === "number" || col.type === "cost"
+                              ? "number"
+                              : col.type === "date"
+                                ? "date"
+                                : "text"
+                          }
+                          value={row[col.key] ?? ""}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            updateRow(
+                              rowIdx,
+                              col.key,
+                              col.type === "number" || col.type === "cost"
+                                ? (v ? Number(v) : null)
+                                : (v || null),
+                            );
+                          }}
+                          variant="standard"
+                          InputLabelProps={col.type === "date" ? { shrink: true } : undefined}
+                          sx={{
+                            width: "100%",
+                            minWidth:
+                              col.type === "number" || col.type === "cost"
+                                ? 80
+                                : col.type === "date"
+                                  ? 130
+                                  : 120,
+                          }}
+                        />
+                      </Box>
+                    ))}
+                    <Box component="td" sx={{ ...cellSx, whiteSpace: "nowrap", width: 96 }}>
+                      <IconButton
+                        size="small"
+                        disabled={rowIdx === 0}
+                        onClick={() => moveRow(rowIdx, rowIdx - 1)}
+                      >
+                        <MaterialSymbol icon="arrow_upward" size={14} />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        disabled={rowIdx === rows.length - 1}
+                        onClick={() => moveRow(rowIdx, rowIdx + 1)}
+                      >
+                        <MaterialSymbol icon="arrow_downward" size={14} />
+                      </IconButton>
+                      <IconButton size="small" onClick={() => deleteRow(rowIdx)}>
+                        <MaterialSymbol icon="delete" size={14} />
+                      </IconButton>
+                    </Box>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          )}
+          <Button
+            size="small"
+            startIcon={<MaterialSymbol icon="add" size={16} />}
+            onClick={addRow}
+            sx={{ mt: 1 }}
+          >
+            {t("table.addRow")}
+          </Button>
+        </Box>
+      );
+    }
     default:
       return (
         <TextField

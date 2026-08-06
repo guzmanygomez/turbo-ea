@@ -229,5 +229,7 @@
   "export.allFieldsHint": "Полный набор данных, пригоден для повторного импорта",
   "export.currentView": "Экспортировать текущий вид",
   "export.currentViewHint": "Отражает таблицу на экране — не подходит для повторного импорта",
-  "export.viewSheetName": "Вид"
+  "export.viewSheetName": "Вид",
+  "columns.tableRowCount_one": "{{count}} строка",
+  "columns.tableRowCount_other": "{{count}} строк(и)"
 }

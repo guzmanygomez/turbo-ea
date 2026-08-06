@@ -448,6 +448,7 @@ RUN mkdir -p /etc/nginx/templates /etc/nginx/turboea-templates /var/cache/nginx 
     touch /var/run/nginx.pid && \
     rm -f /docker-entrypoint.d/10-listen-on-ipv6-by-default.sh && \
     sed -i '/^user\s\+/d' /etc/nginx/nginx.conf && \
+    sed -i 's/\r//' /usr/local/bin/turboea-nginx-entrypoint && \
     chmod 755 /usr/local/bin/turboea-nginx-entrypoint && \
     chown -R ${APP_UID}:${APP_GID} /etc/nginx/conf.d /etc/nginx/turboea-templates /etc/nginx/templates /var/cache/nginx /var/log/nginx /run
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,9 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.app_settings import AppSettings
+from app.models.card import Card
 from app.models.file_attachment import FileAttachment
 from app.models.user import User
 from app.services.event_bus import event_bus
+from app.services.file_extraction_service import run_extraction_for_attachment
 from app.services.permission_service import PermissionService
 
 router = APIRouter(tags=["file-attachments"])
@@ -73,6 +75,7 @@ async def list_file_attachments(
 @router.post("/cards/{card_id}/file-attachments", status_code=201)
 async def upload_file_attachment(
     card_id: str,
+    background_tasks: BackgroundTasks,
     file: UploadFile,
     category: str | None = Form(None),
     db: AsyncSession = Depends(get_db),
@@ -133,6 +136,23 @@ async def upload_file_attachment(
     )
     await db.commit()
     await db.refresh(attachment)
+
+    # Trigger AI field extraction asynchronously if any scenario matches
+    card_result = await db.execute(select(Card).where(Card.id == card_uuid))
+    card = card_result.scalar_one_or_none()
+    if card:
+        background_tasks.add_task(
+            run_extraction_for_attachment,
+            card_id_str=str(card_uuid),
+            attachment_id_str=str(attachment.id),
+            attachment_name=attachment.name,
+            card_type_key=card.type,
+            subtype=card.subtype,
+            file_category=category,
+            file_data=data,
+            mime_type=content_type,
+            uploader_user_id_str=str(user.id),
+        )
 
     return {
         "id": str(attachment.id),

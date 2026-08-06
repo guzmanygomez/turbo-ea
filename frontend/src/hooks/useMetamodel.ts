@@ -7,6 +7,7 @@ type Subscriber = (snap: Snapshot) => void;
 
 let _cache: Snapshot | null = null;
 let _inflight: Promise<Snapshot> | null = null;
+let _generation = 0; // incremented on every new fetch; guards stale .then writes
 const _subscribers: Set<Subscriber> = new Set();
 
 async function _fetch(): Promise<Snapshot> {
@@ -20,9 +21,13 @@ async function _fetch(): Promise<Snapshot> {
 function _fetchOnce(): Promise<Snapshot> {
   if (_cache) return Promise.resolve(_cache);
   if (_inflight) return _inflight;
+  const gen = ++_generation;
   _inflight = _fetch()
     .then((snap) => {
-      _cache = snap;
+      // Only write to _cache if no newer fetch has started since this one.
+      // Without this guard an orphaned fetch (nulled from invalidateCache before
+      // it resolved) could overwrite a fresher cache written by the new fetch.
+      if (_generation === gen) _cache = snap;
       return snap;
     })
     .finally(() => {
@@ -83,6 +88,9 @@ export function useMetamodel() {
  * a render-only context.
  */
 export async function invalidateCache(): Promise<void> {
+  // Bump generation first so any currently in-flight fetch's .then closure
+  // will see a generation mismatch and skip writing to _cache.
+  _generation++;
   _cache = null;
   _inflight = null;
   const snap = await _fetchOnce();

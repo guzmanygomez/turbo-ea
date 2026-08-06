@@ -350,5 +350,6 @@
   "dashboard.workspace.andMore_one": "e {{count}} altro",
   "dashboard.workspace.andMore_other": "e altri {{count}}",
   "actions.undo": "Annulla",
-  "dashboard.workspace.favoriteRemoved": "«{{name}}» rimosso dai preferiti"
+  "dashboard.workspace.favoriteRemoved": "«{{name}}» rimosso dai preferiti",
+  "fieldTypes.table": "Tabella"
 }

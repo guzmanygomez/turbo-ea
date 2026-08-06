@@ -617,5 +617,9 @@
   "todos.recurrence.months_one": "Hver måned",
   "todos.recurrence.months_other": "Hver {{count}}. måned",
   "todos.recurrence.years_one": "Hvert år",
-  "todos.recurrence.years_other": "Hvert {{count}}. år"
+  "todos.recurrence.years_other": "Hvert {{count}}. år",
+  "table.addRow": "Tilføj række",
+  "table.rowCount_one": "{{count}} række",
+  "table.rowCount_other": "{{count}} rækker",
+  "table.emptyHint": "Ingen rækker endnu"
 }

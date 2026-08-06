@@ -83,6 +83,12 @@ function ResourcesTab({
   const { linkTypes, fileCategories, byKindKey } = useResourceTypes();
   const locale = i18n.language;
 
+  const allowedFileCats = useMemo(() => {
+    const ct = metamodelTypes.find((t) => t.key === cardType);
+    const allowed = (ct?.section_config as Record<string, unknown> | undefined)?.allowed_file_categories as string[] | undefined;
+    return allowed ? fileCategories.filter((cat) => allowed.includes(cat.key)) : fileCategories;
+  }, [metamodelTypes, cardType, fileCategories]);
+
   // Resolve the display label / icon for a stored link-type or file-category
   // key. Falls back to the raw stored value so legacy / removed keys still
   // render (e.g. a document saved before its type was deleted from the list).
@@ -923,7 +929,7 @@ function ResourcesTab({
             onChange={(e) => setUploadCategory(e.target.value)}
           >
             <MenuItem value="">{t("resources.uploadFileDialog.noCategory")}</MenuItem>
-            {fileCategories.map((cat) => (
+            {allowedFileCats.map((cat) => (
               <MenuItem key={cat.key} value={cat.key}>
                 {fieldLabel(cat, locale)}
               </MenuItem>

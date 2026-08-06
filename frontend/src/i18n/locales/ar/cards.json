@@ -617,5 +617,9 @@
   "todos.recurrence.months_one": "كل شهر",
   "todos.recurrence.months_other": "كل {{count}} أشهر",
   "todos.recurrence.years_one": "كل سنة",
-  "todos.recurrence.years_other": "كل {{count}} سنوات"
+  "todos.recurrence.years_other": "كل {{count}} سنوات",
+  "table.addRow": "إضافة صف",
+  "table.rowCount_one": "{{count}} صف",
+  "table.rowCount_other": "{{count}} صفوف",
+  "table.emptyHint": "لا توجد صفوف بعد"
 }
