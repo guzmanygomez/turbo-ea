@@ -21,15 +21,14 @@ import AccordionDetails from "@mui/material/AccordionDetails";
 import Tooltip from "@mui/material/Tooltip";
 import Link from "@mui/material/Link";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import MaterialSymbol from "@/components/MaterialSymbol";
-import { useMetamodel } from "@/hooks/useMetamodel";
 import { useFileUploadsEnabled } from "@/hooks/useFileUploadsEnabled";
+import { useMetamodel } from "@/hooks/useMetamodel";
 import { useResourceTypes } from "@/hooks/useResourceTypes";
 import { fieldLabel } from "@/hooks/useResolveLabel";
 import { api } from "@/api/client";
-import CreateAdrDialog from "@/features/ea-delivery/CreateAdrDialog";
-import type { ArchitectureDecision, DiagramSummary, FileAttachment } from "@/types";
+import type { DiagramSummary, FileAttachment } from "@/types";
 
 interface DocumentLink {
   id: string;
@@ -40,11 +39,13 @@ interface DocumentLink {
   created_at: string | null;
 }
 
-const STATUS_COLORS: Record<string, "default" | "warning" | "success"> = {
-  draft: "default",
-  in_review: "warning",
-  signed: "success",
-};
+interface SnowLink {
+  connection_name: string;
+  table: string;
+  sys_id: string;
+  url: string;
+  last_synced_at: string | null;
+}
 
 const MIME_ICONS: Record<string, string> = {
   "application/pdf": "picture_as_pdf",
@@ -63,29 +64,28 @@ function formatFileSize(bytes: number): string {
 // ── ResourcesTab ────────────────────────────────────────────────
 function ResourcesTab({
   fsId,
-  cardName,
   cardType,
   canManageDocuments,
-  canManageAdrLinks,
   canManageDiagramLinks,
 }: {
   fsId: string;
-  cardName: string;
   cardType: string;
   canManageDocuments: boolean;
-  canManageAdrLinks: boolean;
   canManageDiagramLinks: boolean;
 }) {
   const { t, i18n } = useTranslation(["cards", "common"]);
   const navigate = useNavigate();
-  const { types: metamodelTypes } = useMetamodel();
   const { fileUploadsEnabled } = useFileUploadsEnabled();
+  const { types: metamodelTypes } = useMetamodel();
   const { linkTypes, fileCategories, byKindKey } = useResourceTypes();
   const locale = i18n.language;
 
+  // Restrict the upload dialog's file-category choices to the ones this card
+  // type's admin-configured `allowed_file_categories` allows, if any are set.
   const allowedFileCats = useMemo(() => {
     const ct = metamodelTypes.find((t) => t.key === cardType);
-    const allowed = (ct?.section_config as Record<string, unknown> | undefined)?.allowed_file_categories as string[] | undefined;
+    const allowed = (ct?.section_config as Record<string, unknown> | undefined)
+      ?.allowed_file_categories as string[] | undefined;
     return allowed ? fileCategories.filter((cat) => allowed.includes(cat.key)) : fileCategories;
   }, [metamodelTypes, cardType, fileCategories]);
 
@@ -111,25 +111,11 @@ function ResourcesTab({
     [byKindKey],
   );
 
-  const typeColorMap = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const mt of metamodelTypes) map[mt.key] = mt.color;
-    return map;
-  }, [metamodelTypes]);
-
-  const [adrs, setAdrs] = useState<ArchitectureDecision[]>([]);
   const [files, setFiles] = useState<FileAttachment[]>([]);
   const [docs, setDocs] = useState<DocumentLink[]>([]);
+  const [snowLinks, setSnowLinks] = useState<SnowLink[]>([]);
   const [linkedDiagrams, setLinkedDiagrams] = useState<DiagramSummary[]>([]);
   const [error, setError] = useState("");
-
-  // ADR link dialog
-  const [linkAdrOpen, setLinkAdrOpen] = useState(false);
-  const [adrSearch, setAdrSearch] = useState("");
-  const [allAdrs, setAllAdrs] = useState<ArchitectureDecision[]>([]);
-
-  // ADR create dialog
-  const [createAdrOpen, setCreateAdrOpen] = useState(false);
 
   // Document link dialog
   const [addLinkOpen, setAddLinkOpen] = useState(false);
@@ -157,13 +143,6 @@ function ResourcesTab({
     }
   }, [linkTypes, linkType]);
 
-  const loadAdrs = useCallback(() => {
-    api
-      .get<ArchitectureDecision[]>(`/adr/by-card/${fsId}`)
-      .then(setAdrs)
-      .catch(() => setError(t("resources.error.loadFailed")));
-  }, [fsId, t]);
-
   const loadFiles = useCallback(() => {
     api
       .get<FileAttachment[]>(`/cards/${fsId}/file-attachments`)
@@ -185,44 +164,22 @@ function ResourcesTab({
       .catch(() => {});
   }, [fsId]);
 
+  const loadSnowLinks = useCallback(() => {
+    // Derived read-only deep links to the ServiceNow record(s) this card is
+    // synced with. Silently ignore errors (e.g. no servicenow.view permission)
+    // — the section simply stays hidden.
+    api
+      .get<SnowLink[]>(`/servicenow/cards/${fsId}/links`)
+      .then(setSnowLinks)
+      .catch(() => setSnowLinks([]));
+  }, [fsId]);
+
   useEffect(() => {
-    loadAdrs();
     loadFiles();
     loadDocs();
     loadDiagrams();
-  }, [loadAdrs, loadFiles, loadDocs, loadDiagrams]);
-
-  // ── ADR Linking ──
-  const openLinkAdr = async () => {
-    setLinkAdrOpen(true);
-    setAdrSearch("");
-    try {
-      const all = await api.get<ArchitectureDecision[]>("/adr");
-      setAllAdrs(all);
-    } catch {
-      /* ignore */
-    }
-  };
-
-  const handleLinkAdr = async (adrId: string) => {
-    try {
-      await api.post(`/adr/${adrId}/cards`, { card_id: fsId });
-      loadAdrs();
-      setLinkAdrOpen(false);
-    } catch {
-      setError(t("resources.error.linkFailed"));
-    }
-  };
-
-  const handleUnlinkAdr = async (adrId: string) => {
-    if (!confirm(t("resources.confirmUnlinkAdr"))) return;
-    try {
-      await api.delete(`/adr/${adrId}/cards/${fsId}`);
-      loadAdrs();
-    } catch {
-      setError(t("resources.error.unlinkFailed"));
-    }
-  };
+    loadSnowLinks();
+  }, [loadFiles, loadDocs, loadDiagrams, loadSnowLinks]);
 
   // ── File Upload ──
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -341,14 +298,6 @@ function ResourcesTab({
       d.name.toLowerCase().includes(diagramSearch.toLowerCase()),
   );
 
-  const linkedAdrIds = new Set(adrs.map((a) => a.id));
-  const filteredAllAdrs = allAdrs.filter(
-    (a) =>
-      !linkedAdrIds.has(a.id) &&
-      (a.title.toLowerCase().includes(adrSearch.toLowerCase()) ||
-        a.reference_number.toLowerCase().includes(adrSearch.toLowerCase())),
-  );
-
   return (
     <Box>
       {error && (
@@ -356,109 +305,6 @@ function ResourcesTab({
           {error}
         </Alert>
       )}
-
-      {/* ── Architecture Decisions ── */}
-      <Accordion defaultExpanded>
-        <AccordionSummary
-          expandIcon={<MaterialSymbol icon="expand_more" size={20} />}
-        >
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <MaterialSymbol icon="gavel" size={20} />
-            <Typography variant="subtitle1" fontWeight={600}>
-              {t("resources.architectureDecisions")}
-            </Typography>
-            <Chip label={adrs.length} size="small" />
-          </Box>
-        </AccordionSummary>
-        <AccordionDetails>
-          {canManageAdrLinks && (
-            <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1, mb: 1 }}>
-              <Button
-                size="small"
-                startIcon={<MaterialSymbol icon="add" size={18} />}
-                onClick={() => setCreateAdrOpen(true)}
-                sx={{ textTransform: "none" }}
-              >
-                {t("resources.createAdr")}
-              </Button>
-              <Button
-                size="small"
-                startIcon={<MaterialSymbol icon="link" size={18} />}
-                onClick={openLinkAdr}
-                sx={{ textTransform: "none" }}
-              >
-                {t("resources.linkAdr")}
-              </Button>
-            </Box>
-          )}
-          <List dense>
-            {adrs.map((adr) => (
-              <ListItem
-                key={adr.id}
-                secondaryAction={
-                  canManageAdrLinks ? (
-                    <Tooltip title={t("resources.unlinkAdr")}>
-                      <IconButton
-                        size="small"
-                        onClick={() => handleUnlinkAdr(adr.id)}
-                      >
-                        <MaterialSymbol icon="link_off" size={18} />
-                      </IconButton>
-                    </Tooltip>
-                  ) : undefined
-                }
-                sx={{ cursor: "pointer" }}
-                onClick={() => navigate(`/ea-delivery/adr/${adr.id}`)}
-              >
-                <ListItemText
-                  primary={
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
-                      <Typography
-                        variant="body2"
-                        fontWeight={600}
-                        color="text.secondary"
-                      >
-                        {adr.reference_number}
-                      </Typography>
-                      <Typography variant="body2">{adr.title}</Typography>
-                      <Chip
-                        label={adr.status.replace("_", " ")}
-                        size="small"
-                        color={STATUS_COLORS[adr.status] || "default"}
-                        sx={{ height: 20, fontSize: "0.7rem" }}
-                      />
-                      {(adr.linked_cards ?? []).map((lc) => (
-                        <Chip
-                          key={lc.id}
-                          label={lc.name}
-                          size="small"
-                          sx={{
-                            height: 20,
-                            fontSize: "0.7rem",
-                            maxWidth: 140,
-                            bgcolor: typeColorMap[lc.type] || "#9e9e9e",
-                            color: "#fff",
-                            "& .MuiChip-label": { px: 0.75 },
-                          }}
-                        />
-                      ))}
-                    </Box>
-                  }
-                />
-              </ListItem>
-            ))}
-            {adrs.length === 0 && (
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ py: 2, textAlign: "center" }}
-              >
-                {t("resources.emptyAdr")}
-              </Typography>
-            )}
-          </List>
-        </AccordionDetails>
-      </Accordion>
 
       {/* ── File Attachments ── */}
       {(fileUploadsEnabled || files.length > 0) && (
@@ -659,6 +505,51 @@ function ResourcesTab({
         </AccordionDetails>
       </Accordion>
 
+      {/* ── ServiceNow (read-only, auto-derived from sync) ── */}
+      {snowLinks.length > 0 && (
+        <Accordion defaultExpanded>
+          <AccordionSummary
+            expandIcon={<MaterialSymbol icon="expand_more" size={20} />}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <MaterialSymbol icon="cloud_sync" size={20} />
+              <Typography variant="subtitle1" fontWeight={600}>
+                {t("resources.serviceNow")}
+              </Typography>
+              <Chip label={snowLinks.length} size="small" />
+              <Tooltip title={t("resources.serviceNowHint")}>
+                <Box component="span" sx={{ display: "inline-flex" }}>
+                  <MaterialSymbol icon="info" size={16} />
+                </Box>
+              </Tooltip>
+            </Box>
+          </AccordionSummary>
+          <AccordionDetails>
+            <List dense>
+              {snowLinks.map((link) => (
+                <ListItem key={`${link.table}-${link.sys_id}`}>
+                  <ListItemIcon sx={{ minWidth: 36 }}>
+                    <MaterialSymbol icon="open_in_new" size={20} />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={
+                      <Link
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {`${link.connection_name} — ${link.table}`}
+                      </Link>
+                    }
+                    secondary={link.sys_id}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          </AccordionDetails>
+        </Accordion>
+      )}
+
       {/* ── Diagrams ── */}
       <Accordion defaultExpanded>
         <AccordionSummary
@@ -833,77 +724,6 @@ function ResourcesTab({
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* ── Link ADR Dialog ── */}
-      <Dialog
-        open={linkAdrOpen}
-        onClose={() => setLinkAdrOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>{t("resources.linkAdrDialog.title")}</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            placeholder={t("resources.linkAdrDialog.search")}
-            fullWidth
-            size="small"
-            value={adrSearch}
-            onChange={(e) => setAdrSearch(e.target.value)}
-            sx={{ mt: 1, mb: 2 }}
-          />
-          <List dense>
-            {filteredAllAdrs.map((adr) => (
-              <ListItem
-                key={adr.id}
-                secondaryAction={
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={() => handleLinkAdr(adr.id)}
-                    sx={{ textTransform: "none" }}
-                  >
-                    {t("resources.linkAdr")}
-                  </Button>
-                }
-              >
-                <ListItemText
-                  primary={
-                    <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-                      <Typography variant="body2" fontWeight={600}>
-                        {adr.reference_number}
-                      </Typography>
-                      <Typography variant="body2">{adr.title}</Typography>
-                    </Box>
-                  }
-                />
-              </ListItem>
-            ))}
-            {filteredAllAdrs.length === 0 && (
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ py: 2, textAlign: "center" }}
-              >
-                {t("resources.linkAdrDialog.empty")}
-              </Typography>
-            )}
-          </List>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setLinkAdrOpen(false)}>
-            {t("common:actions.cancel")}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ── Create ADR Dialog ── */}
-      <CreateAdrDialog
-        open={createAdrOpen}
-        onClose={() => setCreateAdrOpen(false)}
-        onCreated={() => loadAdrs()}
-        preLinkedCards={[{ id: fsId, name: cardName, type: cardType }]}
-      />
 
       {/* ── Upload File Dialog ── */}
       <Dialog

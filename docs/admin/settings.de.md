@@ -11,6 +11,9 @@ Die **Einstellungen**-Seite unter **Admin → Einstellungen** (`/admin/settings`
 | **Webportale** | `/admin/settings?tab=web-portals` | Öffentliche schreibgeschützte Portal-Slugs, Sichtbarkeits-Filter | [Webportale](web-portals.md) |
 | **ServiceNow** | `/admin/settings?tab=servicenow` | ServiceNow-Verbindung, Sync-Konfiguration, Identitäts-Mapping | [ServiceNow-Integration](servicenow.md) |
 | **TurboLens** | `/admin/settings?tab=turbolens` | TurboLens-spezifische Schalter, aktivierte Regulierungen, Analyse-Polling | Siehe Abschnitt [TurboLens-Einstellungen](#turbolens-einstellungen) unten |
+| **Migration** | `/admin/settings?tab=migration` | Importe aus anderen EA-Plattformen sowie vollständiger Workspace-Transfer zwischen Turbo-EA-Instanzen | [Plattform-Migration](migration.md) |
+| **Audit-Log** | `/admin/settings?tab=audit-log` | Änderungsprotokoll — wer was geändert hat und ob es aus der Weboberfläche, der API oder einem KI-Werkzeug stammt | — |
+| **Ressourcen** | `/admin/settings?tab=resources` | Alle an Karten angehängten Dateien und Links, mit Speicherstatistiken und Massenbereinigung | [Ressourcen](resources.md) |
 
 Der Rest dieser Seite behandelt den **Allgemein**-Reiter.
 
@@ -21,6 +24,10 @@ Der Rest dieser Seite behandelt den **Allgemein**-Reiter.
 ### Logo
 
 Laden Sie ein benutzerdefiniertes Logo hoch, das in der oberen Navigationsleiste erscheint. Unterstützte Formate: PNG, JPEG, SVG, WebP, GIF. Klicken Sie auf **Zurücksetzen**, um zum Standard-Turbo-EA-Logo zurückzukehren.
+
+### Stil der Navigationsleiste
+
+Wählen Sie Hintergrund- und Textfarbe der oberen Navigationsleiste. Der gewählte Stil gilt für **alle Benutzer** der Instanz, auf Desktop und Mobilgeräten (einschließlich des mobilen Menüs). Wählen Sie eine der sieben kuratierten Voreinstellungen — Marineblau (Standard), Hell, Anthrazit, Schiefer, Blau, Waldgrün oder Pflaume — oder wählen Sie **Benutzerdefiniert**, um Hintergrund- und Textfarbe frei über die Farbwähler festzulegen. Eine Live-Vorschau zeigt vor dem Speichern, wie die Navigationsleiste aussehen wird, und eine Warnung erscheint, wenn der Kontrast zwischen Text und Hintergrund zu gering ist (unter WCAG AA). Klicken Sie auf **Auf Standard zurücksetzen**, um zum Standard zurückzukehren.
 
 ### Favicon
 
@@ -96,10 +103,10 @@ Turbo EA versendet Einladungs-E-Mails, Umfrage-Benachrichtigungen, Passwort-Zur�
 | Feld | Beschreibung |
 |------|--------------|
 | **SMTP-Host** | Hostname Ihres Mailservers (z. B. `smtp.gmail.com`) |
-| **SMTP-Port** | Server-Port (üblicherweise 587 für TLS) |
+| **SMTP-Port** | Server-Port (587 für STARTTLS, 465 für implizites TLS/SSL) |
 | **SMTP-Benutzer** | Authentifizierungs-Benutzername |
 | **SMTP-Passwort** | Authentifizierungspasswort (verschlüsselt gespeichert) |
-| **TLS verwenden** | STARTTLS-Verschlüsselung aktivieren (empfohlen) |
+| **TLS verwenden** | STARTTLS-Verschlüsselung aktivieren (empfohlen). Wird bei Port 465 ignoriert, der immer implizites TLS/SSL verwendet |
 
 ### Microsoft Graph API (empfohlen für Microsoft 365)
 

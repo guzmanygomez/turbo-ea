@@ -13,9 +13,7 @@ class CustomDashboard(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "custom_dashboards"
 
     name = Column(String(200), nullable=False)
-    translations = Column(
-        JSONB, nullable=False, default={}, server_default=sa.text("'{}'::jsonb")
-    )
+    translations = Column(JSONB, nullable=False, default={}, server_default=sa.text("'{}'::jsonb"))
     # "draft" | "published"
     status = Column(String(20), nullable=False, default="draft", server_default="draft")
     # List of UserGroup UUID strings — only users in these groups see this tab

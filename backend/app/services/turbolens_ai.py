@@ -16,7 +16,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.encryption import decrypt_value
+from app.database import async_session
 from app.models.app_settings import AppSettings
+from app.services.ai_service import DEFAULT_AZURE_API_VERSION
 
 logger = logging.getLogger("turboea.turbolens.ai")
 
@@ -53,11 +55,12 @@ async def get_ai_config(db: AsyncSession) -> dict[str, str]:
         "anthropic": "claude",
         "openai": "openai",
         "openai_compatible": "openai",
+        "azure_openai": "azure",
         "ollama": "ollama",
     }
     provider = provider_map.get(provider_type, provider_type)
 
-    # For openai_compatible, use the custom provider URL
+    # For openai_compatible / azure, use the custom provider URL
     provider_url = ai.get("providerUrl", "")
 
     return {
@@ -65,6 +68,7 @@ async def get_ai_config(db: AsyncSession) -> dict[str, str]:
         "api_key": api_key,
         "provider_url": provider_url,
         "model": ai.get("model", ""),
+        "api_version": ai.get("apiVersion", "") or DEFAULT_AZURE_API_VERSION,
     }
 
 
@@ -75,6 +79,8 @@ def is_ai_configured(ai_config: dict[str, str]) -> bool:
     provider_url = ai_config.get("provider_url", "")
     model = ai_config.get("model", "")
     if provider in ("claude", "openai", "deepseek", "gemini") and api_key:
+        return True
+    if provider == "azure" and provider_url and api_key:
         return True
     if provider == "ollama" and (provider_url or model):
         return True
@@ -87,7 +93,6 @@ def is_ai_configured(ai_config: dict[str, str]) -> bool:
 
 
 async def call_ai(
-    db: AsyncSession,
     prompt: str,
     max_tokens: int = 2048,
     system_prompt: str = "",
@@ -95,8 +100,19 @@ async def call_ai(
     """Call the configured LLM and return {text, truncated}.
 
     Supports Claude, OpenAI, DeepSeek, Gemini via direct HTTP.
+
+    Deliberately takes **no** session. It used to read the AI config on the
+    caller's session, which left that session's pooled connection checked out —
+    in an open transaction — for the whole LLM round-trip. Callers are typically
+    background jobs looping over dozens of batches, so one connection stayed
+    pinned (and held back the vacuum horizon) for the entire analysis. It cannot
+    release the caller's session either: a helper must never commit or roll back
+    a session it was handed, since it cannot know what the caller has pending.
+    So it opens its own short-lived session for the config read and closes it
+    before any HTTP happens.
     """
-    config = await get_ai_config(db)
+    async with async_session() as cfg_db:
+        config = await get_ai_config(cfg_db)
     provider = config["provider"]
     api_key = config["api_key"]
     model = config["model"]
@@ -128,6 +144,17 @@ async def call_ai(
             [{"role": "system", "content": system_prompt}, *messages] if system_prompt else messages
         )
         body = {"model": model or "gpt-4o", "max_tokens": max_tokens, "messages": msgs}
+    elif provider == "azure":
+        # Azure Hosted OpenAI: deployment name goes in the URL (not the body),
+        # auth is the `api-key` header, and an api-version query param is required.
+        base_url = (provider_url or "").rstrip("/")
+        api_version = config.get("api_version") or DEFAULT_AZURE_API_VERSION
+        url = f"{base_url}/openai/deployments/{model}/chat/completions?api-version={api_version}"
+        headers = {"api-key": api_key}
+        msgs = (
+            [{"role": "system", "content": system_prompt}, *messages] if system_prompt else messages
+        )
+        body = {"max_tokens": max_tokens, "messages": msgs}
     elif provider == "deepseek":
         url = "https://api.deepseek.com/v1/chat/completions"
         headers = {"Authorization": f"Bearer {api_key}"}

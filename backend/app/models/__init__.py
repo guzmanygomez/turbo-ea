@@ -15,12 +15,19 @@ from app.models.diagram_group import DiagramGroup, diagram_group_members
 from app.models.document import Document
 from app.models.ea_principle import EAPrinciple
 from app.models.event import Event
+from app.models.extension import (
+    Extension,
+    ExtensionInstall,
+    ExtensionLicense,
+    ExtensionSchemaVersion,
+)
 from app.models.file_attachment import FileAttachment
 from app.models.file_extraction_scenario import FileExtractionScenario
 from app.models.kpi_snapshot import KpiSnapshot
 from app.models.migration import IdentityMap, Migration, StagedRecord
 from app.models.mutation_batch import MutationBatch
 from app.models.notification import Notification
+from app.models.ops_nonce import OpsRequestNonce
 from app.models.ppm_cost_line import PpmBudgetLine, PpmCostLine
 from app.models.ppm_dependency import PpmDependency
 from app.models.ppm_risk import PpmRisk
@@ -30,7 +37,7 @@ from app.models.ppm_task_comment import PpmTaskComment
 from app.models.ppm_wbs import PpmWbs
 from app.models.process_assessment import ProcessAssessment
 from app.models.process_diagram import ProcessDiagram
-from app.models.process_element import ProcessElement
+from app.models.process_element import ProcessElement, ProcessElementOrganization
 from app.models.process_flow_version import ProcessFlowVersion
 from app.models.relation import Relation
 from app.models.relation_type import RelationType
@@ -101,6 +108,10 @@ __all__ = [
     "SavedReport",
     "Todo",
     "Event",
+    "Extension",
+    "ExtensionInstall",
+    "ExtensionLicense",
+    "ExtensionSchemaVersion",
     "Document",
     "EAPrinciple",
     "Bookmark",
@@ -135,6 +146,7 @@ __all__ = [
     "ProcessDiagram",
     "ProcessElement",
     "ProcessAssessment",
+    "ProcessElementOrganization",
     "ProcessFlowVersion",
     "SsoInvitation",
     "WebPortal",
@@ -149,4 +161,5 @@ __all__ = [
     "UserGroupMember",
     "ResourceType",
     "CustomDashboard",
+    "OpsRequestNonce",
 ]

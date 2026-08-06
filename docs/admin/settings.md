@@ -11,6 +11,9 @@ The **Settings** page at **Admin → Settings** (`/admin/settings`) is the centr
 | **Web Portals** | `/admin/settings?tab=web-portals` | Public read-only portal slugs, visibility filters | [Web Portals](web-portals.md) |
 | **ServiceNow** | `/admin/settings?tab=servicenow` | ServiceNow connection, sync configuration, identity mapping | [ServiceNow Integration](servicenow.md) |
 | **TurboLens** | `/admin/settings?tab=turbolens` | TurboLens-specific toggles, enabled regulations, analysis polling | See section [TurboLens settings](#turbolens-settings) below |
+| **Migration** | `/admin/settings?tab=migration` | Imports from other EA platforms, and full workspace transfer between Turbo EA instances | [Platform Migration](migration.md) |
+| **Audit log** | `/admin/settings?tab=audit-log` | Mutation-batch ledger — who changed what, and whether it came from the web UI, the API, or an AI tool | — |
+| **Resources** | `/admin/settings?tab=resources` | Every file and link attached to a card, with storage statistics and bulk clean-up | [Resources](resources.md) |
 
 The rest of this page covers the **General** tab.
 
@@ -21,6 +24,10 @@ The rest of this page covers the **General** tab.
 ### Logo
 
 Upload a custom logo that appears in the top navigation bar. Supported formats: PNG, JPEG, SVG, WebP, GIF. Click **Reset** to revert to the default Turbo EA logo.
+
+### Navigation bar style
+
+Choose the background and text colors of the top navigation bar. The chosen style applies to **every user** of the instance, on desktop and mobile (including the mobile drawer menu). Pick one of the seven curated presets — Navy (default), Light, Charcoal, Slate, Blue, Forest, or Plum — or select **Custom** to set fully custom background and text colors with the color pickers. A live preview shows how the navigation bar will look before you save, and a warning appears when the contrast between text and background is too low to read comfortably (below WCAG AA). Click **Reset to default** to return to the navy default.
 
 ### Favicon
 
@@ -96,10 +103,10 @@ Turbo EA sends invitation emails, survey notifications, password resets, and oth
 | Field | Description |
 |-------|-------------|
 | **SMTP Host** | Your mail server hostname (e.g., `smtp.gmail.com`) |
-| **SMTP Port** | Server port (typically 587 for TLS) |
+| **SMTP Port** | Server port (587 for STARTTLS, 465 for implicit TLS/SSL) |
 | **SMTP User** | Authentication username |
 | **SMTP Password** | Authentication password (stored encrypted) |
-| **Use TLS** | Enable STARTTLS encryption (recommended) |
+| **Use TLS** | Enable STARTTLS encryption (recommended). Ignored on port 465, which always uses implicit TLS/SSL |
 
 ### Microsoft Graph API (recommended for Microsoft 365)
 

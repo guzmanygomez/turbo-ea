@@ -24,12 +24,14 @@ from app.models.diagram import Diagram, diagram_cards
 from app.models.document import Document
 from app.models.ea_principle import EAPrinciple
 from app.models.event import Event
+from app.models.file_attachment import FileAttachment
 from app.models.saved_report import SavedReport
 from app.models.stakeholder import Stakeholder
 from app.models.survey import Survey, SurveyResponse
 from app.models.todo import Todo
 from app.models.user import User
 from app.services.principles_catalogue_service import get_catalogue_principle
+from app.services.seed_markers import demo_seed_completed, mark_demo_seed_completed
 
 # ---------------------------------------------------------------------------
 # Card name constants (must match seed_demo.py card names)
@@ -107,24 +109,24 @@ REFERENCED_CARD_NAMES: list[str] = [
 
 # Stakeholder role assignments: (card_name, role)
 STAKEHOLDER_ASSIGNMENTS: list[tuple[str, str]] = [
-    # Application – technical_application_owner
-    (CARD_SAP_S4, "technical_application_owner"),
-    (CARD_NEXACLOUD, "technical_application_owner"),
-    (CARD_KAFKA, "technical_application_owner"),
-    (CARD_SF_SALES, "technical_application_owner"),
-    (CARD_SAP_ARIBA, "technical_application_owner"),
-    # Application – business_application_owner
-    (CARD_SAP_S4, "business_application_owner"),
-    (CARD_POWERBI, "business_application_owner"),
-    (CARD_SF_SALES, "business_application_owner"),
+    # Application – technicalApplicationOwner
+    (CARD_SAP_S4, "technicalApplicationOwner"),
+    (CARD_NEXACLOUD, "technicalApplicationOwner"),
+    (CARD_KAFKA, "technicalApplicationOwner"),
+    (CARD_SF_SALES, "technicalApplicationOwner"),
+    (CARD_SAP_ARIBA, "technicalApplicationOwner"),
+    # Application – businessApplicationOwner
+    (CARD_SAP_S4, "businessApplicationOwner"),
+    (CARD_POWERBI, "businessApplicationOwner"),
+    (CARD_SF_SALES, "businessApplicationOwner"),
     # Initiative – responsible
     (CARD_INIT_SAP, "responsible"),
     (CARD_INIT_IOT, "responsible"),
     (CARD_INIT_DTP, "responsible"),
     (CARD_INIT_DEVOPS, "responsible"),
-    # Initiative – it_project_manager
-    (CARD_INIT_SF, "it_project_manager"),
-    (CARD_INIT_CYBER, "it_project_manager"),
+    # Initiative – itProjectManager
+    (CARD_INIT_SF, "itProjectManager"),
+    (CARD_INIT_CYBER, "itProjectManager"),
     # Organization – responsible
     (CARD_ORG_IT_OPS, "responsible"),
     (CARD_ORG_ENGINEERING, "responsible"),
@@ -139,12 +141,12 @@ VALID_STAKEHOLDER_ROLES_BY_TYPE: dict[str, set[str]] = {
     "Application": {
         "responsible",
         "observer",
-        "technical_application_owner",
-        "business_application_owner",
+        "technicalApplicationOwner",
+        "businessApplicationOwner",
     },
-    "Initiative": {"responsible", "it_project_manager", "observer"},
+    "Initiative": {"responsible", "itProjectManager", "observer"},
     "Organization": {"responsible", "observer"},
-    "BusinessProcess": {"responsible", "process_owner", "observer"},
+    "BusinessProcess": {"responsible", "processOwner", "observer"},
 }
 
 # Valid event types
@@ -456,7 +458,7 @@ SURVEY_DEFS: list[dict] = [
         ),
         "status": "active",
         "target_type_key": "Application",
-        "target_roles": ["responsible", "technical_application_owner"],
+        "target_roles": ["responsible", "technicalApplicationOwner"],
         "fields": [
             {
                 "key": "productName",
@@ -582,6 +584,47 @@ TODO_DEFS: list[tuple[str | None, str, str, int | None]] = [
     (CARD_SAP_ARIBA, "Review supplier catalog data migration from legacy system", "open", 25),
     (CARD_KAFKA, "Migrate legacy topics to Avro schema format", "open", 60),
 ]
+
+# ---------------------------------------------------------------------------
+# File attachment definitions: (card_name, filename, mime_type, category, kb)
+#
+# The bytes are generated filler (see ``_demo_file_bytes``) — the demo needs
+# plausible names, categories and sizes so the Resources tab and its storage
+# statistics have something to show, not real documents. Keep the sizes small:
+# they are stored as blobs in the database.
+# ---------------------------------------------------------------------------
+
+# Office MIME types are long enough to hurt the table's readability inline.
+_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+_PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+
+FILE_ATTACHMENT_DEFS: list[tuple[str, str, str, str, int]] = [
+    (CARD_SAP_S4, "S4HANA Target Architecture.pdf", "application/pdf", "architecture", 320),
+    (CARD_SAP_S4, "ABAP Remediation Backlog.xlsx", _XLSX_MIME, "operations", 96),
+    (CARD_SF_SALES, "Sales Cloud Data Model.png", "image/png", "design", 210),
+    (CARD_SF_SALES, "CRM Security Assessment.pdf", "application/pdf", "security", 145),
+    (CARD_KAFKA, "Kafka Topic Naming Standard.docx", _DOCX_MIME, "operations", 58),
+    (CARD_ITC_POSTGRES, "PostgreSQL Backup Runbook.txt", "text/plain", "operations", 12),
+    (CARD_OKTA, "SSO Access Review Q1.xlsx", _XLSX_MIME, "compliance", 74),
+    (CARD_INIT_SAP, "Migration Steering Deck.pptx", _PPTX_MIME, "meeting_notes", 480),
+]
+
+
+def _demo_file_bytes(file_name: str, kilobytes: int) -> bytes:
+    """Deterministic filler bytes of the requested size.
+
+    Re-seeding a demo instance must produce byte-identical attachments, so the
+    payload is derived from the filename rather than randomised. The content is
+    plainly labelled as demo filler — these are not real documents and are not
+    meant to open in Word or Acrobat.
+    """
+    header = f"Turbo EA demo file: {file_name}\n".encode()
+    filler = b"Demo content. This file exists so the Resources tab has data.\n"
+    target = max(len(header), kilobytes * 1024)
+    body = filler * ((target - len(header)) // len(filler) + 1)
+    return (header + body)[:target]
+
 
 # ---------------------------------------------------------------------------
 # Document (URL attachment) definitions: (card_name, name, url)
@@ -1041,15 +1084,29 @@ def _build_events(
 # ===================================================================
 
 
+SEEDER_KEY = "extras"
+
+
 async def seed_extras_demo_data(db: AsyncSession) -> dict:
     """Seed extra demo data: comments, stakeholders, events, diagrams, etc.
 
-    Idempotent: skips if Comment records already exist.
-    Requires: base demo data + admin user already seeded.
+    Runs at most once per install, tracked by a durable marker in
+    ``app_settings.general_settings.demoSeeded`` (see ``seed_markers``).
+    Deleting seeded content therefore never brings it back on the next
+    restart. Requires: base demo data + admin user already seeded.
     """
-    # Check idempotency
+    if await demo_seed_completed(db, SEEDER_KEY):
+        return {"skipped": True, "reason": "already seeded"}
+
+    # Legacy guard, kept for installs that seeded before the marker existed:
+    # comments are only created here, so their presence means we already ran.
+    # Unlike the marker this is destructible (comments cascade-delete with
+    # their cards), which is exactly why the marker exists — record it now so
+    # this install stops relying on the inference.
     existing = await db.execute(select(Comment.id).limit(1))
     if existing.scalar_one_or_none() is not None:
+        await mark_demo_seed_completed(db, SEEDER_KEY)
+        await db.commit()
         return {"skipped": True, "reason": "comments already exist"}
 
     # Look up admin user
@@ -1145,8 +1202,14 @@ async def seed_extras_demo_data(db: AsyncSession) -> dict:
     counts["events"] = len(event_defs)
 
     # ----- Diagrams -----
+    # Name-keyed skip so a re-run on an install that seeded before the marker
+    # existed tops up what is missing instead of adding a second copy of what
+    # is already there. Same pattern for saved reports, surveys and bookmarks.
+    existing_diagrams = set((await db.execute(select(Diagram.name))).scalars().all())
     diagram_count = 0
     for diag_def in DIAGRAM_DEFS:
+        if diag_def["name"] in existing_diagrams:
+            continue
         cells = ""
         cell_ids: list[str] = []
         linked_card_ids: list[uuid.UUID] = []
@@ -1202,7 +1265,12 @@ async def seed_extras_demo_data(db: AsyncSession) -> dict:
     counts["diagrams"] = diagram_count
 
     # ----- Saved Reports -----
+    existing_reports = set((await db.execute(select(SavedReport.name))).scalars().all())
+    saved_report_count = 0
     for report_def in SAVED_REPORT_DEFS:
+        if report_def["name"] in existing_reports:
+            continue
+        saved_report_count += 1
         db.add(
             SavedReport(
                 id=uuid.uuid4(),
@@ -1215,11 +1283,14 @@ async def seed_extras_demo_data(db: AsyncSession) -> dict:
             )
         )
     await db.flush()
-    counts["saved_reports"] = len(SAVED_REPORT_DEFS)
+    counts["saved_reports"] = saved_report_count
 
     # ----- Surveys -----
+    existing_surveys = set((await db.execute(select(Survey.name))).scalars().all())
     survey_objs: list[Survey] = []
     for survey_def in SURVEY_DEFS:
+        if survey_def["name"] in existing_surveys:
+            continue
         s = Survey(
             id=uuid.uuid4(),
             name=survey_def["name"],
@@ -1237,10 +1308,13 @@ async def seed_extras_demo_data(db: AsyncSession) -> dict:
         db.add(s)
     await db.flush()
 
-    # Survey responses (for the first/active survey only)
+    # Survey responses (for the first/active survey only). Pinned to the survey
+    # whose definition is SURVEY_DEFS[0] rather than to survey_objs[0] — on a
+    # partial re-run the first definition may have been skipped as already
+    # present, and survey_objs[0] would then be some *other* (draft) survey.
+    active_survey = next((s for s in survey_objs if s.name == SURVEY_DEFS[0]["name"]), None)
     response_count = 0
-    if survey_objs:
-        active_survey = survey_objs[0]
+    if active_survey is not None:
         for card_name, status, responses in SURVEY_RESPONSE_CARDS:
             card_id = name_to_id.get(card_name)
             if not card_id:
@@ -1258,7 +1332,7 @@ async def seed_extras_demo_data(db: AsyncSession) -> dict:
             db.add(sr)
             response_count += 1
     await db.flush()
-    counts["surveys"] = len(SURVEY_DEFS)
+    counts["surveys"] = len(survey_objs)
     counts["survey_responses"] = response_count
 
     # ----- Todos -----
@@ -1285,6 +1359,29 @@ async def seed_extras_demo_data(db: AsyncSession) -> dict:
     await db.flush()
     counts["todos"] = todo_count
 
+    # ----- File attachments (binary uploads) -----
+    file_count = 0
+    for card_name, file_name, mime_type, category, kb in FILE_ATTACHMENT_DEFS:
+        card_id = name_to_id.get(card_name)
+        if not card_id:
+            continue
+        payload = _demo_file_bytes(file_name, kb)
+        db.add(
+            FileAttachment(
+                id=uuid.uuid4(),
+                card_id=card_id,
+                name=file_name,
+                mime_type=mime_type,
+                size=len(payload),
+                data=payload,
+                category=category,
+                created_by=admin_id,
+            )
+        )
+        file_count += 1
+    await db.flush()
+    counts["file_attachments"] = file_count
+
     # ----- Documents (URL attachments) -----
     doc_count = 0
     for card_name, doc_name, url in DOCUMENT_DEFS:
@@ -1297,7 +1394,10 @@ async def seed_extras_demo_data(db: AsyncSession) -> dict:
                 card_id=card_id,
                 name=doc_name,
                 url=url,
-                type="link",
+                # Every demo link is a product/help page, and "documentation"
+                # is a seeded link type — a raw "link" would render as its own
+                # key wherever link types are resolved for display.
+                type="documentation",
                 created_by=admin_id,
             )
         )
@@ -1306,8 +1406,15 @@ async def seed_extras_demo_data(db: AsyncSession) -> dict:
     counts["documents"] = doc_count
 
     # ----- Bookmarks -----
+    existing_bookmarks = set(
+        (await db.execute(select(Bookmark.name).where(Bookmark.user_id == admin_id)))
+        .scalars()
+        .all()
+    )
     bookmark_count = 0
     for bm_def in BOOKMARK_DEFS:
+        if bm_def["name"] in existing_bookmarks:
+            continue
         db.add(
             Bookmark(
                 id=uuid.uuid4(),
@@ -1349,5 +1456,6 @@ async def seed_extras_demo_data(db: AsyncSession) -> dict:
         await db.flush()
     counts["principles"] = principle_count
 
+    await mark_demo_seed_completed(db, SEEDER_KEY)
     await db.commit()
     return counts

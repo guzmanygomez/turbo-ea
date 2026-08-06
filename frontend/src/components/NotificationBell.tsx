@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import Badge from "@mui/material/Badge";
 import IconButton from "@mui/material/IconButton";
@@ -47,7 +47,15 @@ function timeAgo(dateStr: string, t: (key: string, opts?: Record<string, unknown
   return formatDateWith(getCachedDateFormat(), dateStr);
 }
 
-export default function NotificationBell({ userId }: { userId: string }) {
+export default function NotificationBell({
+  userId,
+  color,
+}: {
+  userId: string;
+  /** Icon color — pass the navbar's configured text color (#852). Defaults to
+   *  white, the color of the built-in navy navbar. */
+  color?: string;
+}) {
   const navigate = useNavigate();
   const { t } = useTranslation(["notifications", "common"]);
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
@@ -154,7 +162,7 @@ export default function NotificationBell({ userId }: { userId: string }) {
     <>
       <Tooltip title={t("title")}>
         <IconButton
-          sx={{ color: "#fff", ml: 0.5 }}
+          sx={{ color: color ?? "#fff", ml: 0.5 }}
           onClick={handleOpen}
         >
           <Badge

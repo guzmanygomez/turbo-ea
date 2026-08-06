@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Accordion from "@mui/material/Accordion";
@@ -23,19 +23,38 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import Tooltip from "@mui/material/Tooltip";
 import Popover from "@mui/material/Popover";
+import Collapse from "@mui/material/Collapse";
 import { useTranslation } from "react-i18next";
 import MaterialSymbol from "@/components/MaterialSymbol";
 import CardPicker from "@/components/CardPicker";
 import { useMetamodel } from "@/hooks/useMetamodel";
-import { useResolveLabel, useTypeLabel, useRelationLabel } from "@/hooks/useResolveLabel";
+import { useSyncedExpanded } from "@/hooks/useSyncedExpanded";
+import {
+  useResolveLabel,
+  useTypeLabel,
+  useRelationLabel,
+  useSubtypeLabel,
+} from "@/hooks/useResolveLabel";
 import { api } from "@/api/client";
-import type { Relation, RelationType } from "@/types";
+import type {
+  DescendantRelationSummaryEntry,
+  Relation,
+  RelationType,
+  SubtypeDef,
+} from "@/types";
+import DescendantRelationsDrawer from "./DescendantRelationsDrawer";
 import RelationAttributesEditor, {
   flowDirectionBadge,
   relationAttributeBadges,
-  hasRelationSubtypes,
+  hasEditableRelationAttributes,
   type RelationAttributes,
 } from "./RelationAttributesEditor";
+import { readableTextColor } from "@/lib/color";
+import {
+  bucketRelationsBySubtype,
+  shouldGroupBySubtype,
+  type SubtypeBucket,
+} from "./cardDetailUtils";
 
 /* ── helpers ────────────────────────────────────────────────── */
 
@@ -267,6 +286,7 @@ function RelationGroup({
   canManageRelations,
   onReload,
   onRelationUpdated,
+  rollupCount = 0,
 }: {
   rt: RelationType;
   isSource: boolean;
@@ -276,22 +296,66 @@ function RelationGroup({
   canManageRelations: boolean;
   onReload: () => void;
   onRelationUpdated: (updated: Relation) => void;
+  /** Cards reachable only through descendants (#863). 0 hides the chip. */
+  rollupCount?: number;
 }) {
   const { t } = useTranslation(["cards", "common"]);
   const rl = useResolveLabel();
   const typeLabel = useTypeLabel();
   const relLabel = useRelationLabel();
+  const subtypeLabel = useSubtypeLabel();
   const { getType } = useMetamodel();
   const navigate = useNavigate();
   const [inlineAddOpen, setInlineAddOpen] = useState(false);
   const [attrsAnchor, setAttrsAnchor] = useState<HTMLElement | null>(null);
   const [attrsRelation, setAttrsRelation] = useState<Relation | null>(null);
+  const [rollupOpen, setRollupOpen] = useState(false);
 
-  const rtHasSubtypes = hasRelationSubtypes(rt);
+  const rtHasAttributes = hasEditableRelationAttributes(rt);
 
   const otherTypeKey = isSource ? rt.target_type_key : rt.source_type_key;
   const otherType = getType(otherTypeKey);
   const verb = isSource ? relLabel(rt) : relLabel(rt, true);
+
+  // Subtype grouping (#792): group the related cards by the target card
+  // type's subtype when the section is large and diverse enough to benefit.
+  // Only applies on the flat-list path — flowDirection types keep their
+  // Provider/Consumer buckets (see below).
+  const subtypeDefs = useMemo<SubtypeDef[]>(() => otherType?.subtypes ?? [], [otherType]);
+  const subtypeBuckets = useMemo(
+    () =>
+      bucketRelationsBySubtype(
+        rels,
+        fsId,
+        subtypeDefs.map((s) => s.key),
+      ),
+    [rels, fsId, subtypeDefs],
+  );
+  const canGroupBySubtype = shouldGroupBySubtype(subtypeBuckets, rels.length);
+  // The manual toggle is offered whenever the type has subtypes and at least
+  // two are actually present, even below the auto-group threshold.
+  const realSubtypeBucketCount = subtypeBuckets.filter((b) => !b.isNoSubtype).length;
+  const canToggleGrouping = subtypeDefs.length > 0 && realSubtypeBucketCount >= 2;
+  const [grouped, setGrouped] = useState(canGroupBySubtype);
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  // Re-sync the auto-decision when the underlying relation set changes
+  // (e.g. after adding/removing a relation) unless the user has toggled.
+  const [userToggled, setUserToggled] = useState(false);
+  useEffect(() => {
+    if (!userToggled) setGrouped(canGroupBySubtype);
+  }, [canGroupBySubtype, userToggled]);
+  const toggleGrouped = () => {
+    setUserToggled(true);
+    setGrouped((g) => !g);
+  };
+  const toggleBucketCollapsed = (key: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const handleDelete = async (relId: string) => {
     await api.delete(`/relations/${relId}`);
@@ -346,9 +410,12 @@ function RelationGroup({
       ? t(`relations.flowDirection.${flowBadge.value}`)
       : attrBadges.length > 0
         ? attrBadges
-            .map(
-              (b) =>
-                `${rl(b.fieldLabel, b.fieldTranslations)}: ${rl(b.optionLabel, b.optionTranslations)}`,
+            .map((b) =>
+              // A flag has no option entity — its label IS the value, so
+              // printing "field: value" would read "Create: Create".
+              b.isFlag
+                ? rl(b.fieldLabel, b.fieldTranslations)
+                : `${rl(b.fieldLabel, b.fieldTranslations)}: ${rl(b.optionLabel, b.optionTranslations)}`,
             )
             .join(", ")
         : t("relations.editAttributes");
@@ -365,11 +432,11 @@ function RelationGroup({
                 sx={{
                   height: 20,
                   fontSize: "0.7rem",
-                  ...(b.color ? { bgcolor: b.color, color: "#fff" } : {}),
+                  ...(b.color ? { bgcolor: b.color, color: readableTextColor(b.color) } : {}),
                 }}
               />
             ))}
-            {rtHasSubtypes && canManageRelations && (
+            {rtHasAttributes && canManageRelations && (
               <Tooltip title={editTooltip}>
                 <IconButton
                   size="small"
@@ -459,6 +526,65 @@ function RelationGroup({
     );
   };
 
+  // Collapsible subtype group (#792). Header label resolves the whole
+  // SubtypeDef (never the key — see useResolveLabel #661 caveat); the
+  // trailing no-subtype bucket uses a dedicated i18n label.
+  const renderSubtypeBucket = (bucket: SubtypeBucket) => {
+    const isOpen = !collapsed.has(bucket.key);
+    const def = bucket.isNoSubtype
+      ? undefined
+      : subtypeDefs.find((s) => s.key === bucket.key);
+    const label = bucket.isNoSubtype
+      ? t("relations.subtype.noSubtype")
+      : def
+        ? subtypeLabel(def)
+        : bucket.key;
+    return (
+      <Box key={bucket.key}>
+        <Box
+          component="button"
+          onClick={() => toggleBucketCollapsed(bucket.key)}
+          sx={{
+            all: "unset",
+            boxSizing: "border-box",
+            width: "100%",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 0.75,
+            px: 1.5,
+            py: 0.5,
+            bgcolor: "background.default",
+            borderTop: "1px solid",
+            borderColor: "divider",
+            "&:hover": { bgcolor: "action.hover" },
+          }}
+        >
+          <MaterialSymbol icon={isOpen ? "expand_more" : "chevron_right"} size={16} />
+          <Typography
+            variant="caption"
+            fontWeight={600}
+            color={bucket.isNoSubtype ? "text.disabled" : "text.secondary"}
+            sx={{ flex: 1, fontStyle: bucket.isNoSubtype ? "italic" : "normal" }}
+          >
+            {label}
+          </Typography>
+          <Chip
+            size="small"
+            label={bucket.rels.length}
+            variant="outlined"
+            sx={{ height: 18, fontSize: "0.65rem" }}
+          />
+        </Box>
+        <Collapse in={isOpen} unmountOnExit>
+          <List dense disablePadding sx={{ px: 0.5 }}>
+            {bucket.rels.map(renderRow)}
+          </List>
+        </Collapse>
+      </Box>
+    );
+  };
+
   return (
     <Box
       sx={{
@@ -508,6 +634,42 @@ function RelationGroup({
           variant="outlined"
           sx={{ height: 20, fontSize: "0.65rem" }}
         />
+        {/* Descendant roll-up (#863): one chip, full list in a drawer. Hidden
+            entirely at 0 so leaf cards look exactly as they did before.
+            Deliberately text-only — this header row already carries the
+            subtype-grouping toggle, whose icon is `account_tree`, and the
+            label says everything a glyph would. The info colour is what
+            separates it from the neutral cardinality chip beside it. */}
+        {rollupCount > 0 && (
+          <Tooltip title={t("relations.rollup.chipTooltip")}>
+            <Chip
+              size="small"
+              label={t("relations.rollup.chip", { count: rollupCount })}
+              variant="outlined"
+              color="info"
+              onClick={() => setRollupOpen(true)}
+              sx={{ height: 20, fontSize: "0.65rem", cursor: "pointer" }}
+            />
+          </Tooltip>
+        )}
+        {!hasFlowDirection && canToggleGrouping && (
+          <Tooltip
+            title={t(
+              grouped ? "relations.subtype.ungroupTooltip" : "relations.subtype.groupTooltip",
+            )}
+          >
+            <IconButton
+              size="small"
+              onClick={toggleGrouped}
+              color={grouped ? "primary" : "default"}
+            >
+              <MaterialSymbol
+                icon={grouped ? "format_list_bulleted" : "account_tree"}
+                size={18}
+              />
+            </IconButton>
+          </Tooltip>
+        )}
         {canManageRelations && !inlineAddOpen && (
           <Tooltip title={t("relations.addSpecific", {
             type: typeLabel(otherType) || otherTypeKey,
@@ -524,8 +686,12 @@ function RelationGroup({
       </Box>
 
       {/* Related cards list — bucketed by role when the relation type
-          carries flowDirection, otherwise a flat list. */}
-      {rels.length > 0 && !hasFlowDirection && (
+          carries flowDirection, grouped by subtype when toggled/auto, else
+          a flat list. */}
+      {rels.length > 0 && !hasFlowDirection && grouped && canToggleGrouping && (
+        <Box>{subtypeBuckets.map(renderSubtypeBucket)}</Box>
+      )}
+      {rels.length > 0 && !hasFlowDirection && !(grouped && canToggleGrouping) && (
         <List dense disablePadding sx={{ px: 0.5 }}>
           {rels.map(renderRow)}
         </List>
@@ -553,7 +719,17 @@ function RelationGroup({
         </>
       )}
 
-      {rtHasSubtypes && attrsRelation && (
+      {rollupCount > 0 && (
+        <DescendantRelationsDrawer
+          open={rollupOpen}
+          onClose={() => setRollupOpen(false)}
+          cardId={fsId}
+          rt={rt}
+          isSource={isSource}
+        />
+      )}
+
+      {rtHasAttributes && attrsRelation && (
         <RelationAttrsPopover
           anchorEl={attrsAnchor}
           open={Boolean(attrsAnchor)}
@@ -630,6 +806,37 @@ function RelationsSection({
   }, [fsId]);
 
   useEffect(load, [load, refreshKey]);
+
+  // Descendant relation roll-up (#863). Only hierarchical types can have
+  // descendants at all, and the fetch is deferred until the section is
+  // actually expanded — a collapsed Relations section costs nothing, and a
+  // leaf card gets one cheap query that returns [].
+  // The accordion is controlled (so the roll-up fetch can be deferred until it
+  // opens), and `useSyncedExpanded` re-syncs when `initialExpanded` changes —
+  // the metamodel's section_config arrives asynchronously, so a config that
+  // lands after mount still opens the section.
+  const [expanded, setExpanded] = useSyncedExpanded(initialExpanded);
+  const [rollup, setRollup] = useState<Record<string, number>>({});
+  const isHierarchical = getType(cardTypeKey)?.has_hierarchy ?? false;
+
+  useEffect(() => {
+    if (!expanded || !isHierarchical) return;
+    let cancelled = false;
+    api
+      .get<DescendantRelationSummaryEntry[]>(`/cards/${fsId}/descendant-relations/summary`)
+      .then((entries) => {
+        if (cancelled) return;
+        const next: Record<string, number> = {};
+        for (const e of entries) next[e.relation_type_key] = e.count;
+        setRollup(next);
+      })
+      // A roll-up failure must never break the Relations section — the chip
+      // simply doesn't appear.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [expanded, isHierarchical, fsId, refreshKey]);
 
   const handleRelationUpdated = useCallback((updated: Relation) => {
     // Only overlay the mutable fields the PATCH response actually updates.
@@ -734,7 +941,11 @@ function RelationsSection({
   const totalRelations = relations.length;
 
   return (
-    <Accordion defaultExpanded={initialExpanded} disableGutters>
+    <Accordion
+      expanded={expanded}
+      onChange={(_, v) => setExpanded(v)}
+      disableGutters
+    >
       <AccordionSummary expandIcon={<MaterialSymbol icon="expand_more" size={20} />}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, flex: 1 }}>
           <MaterialSymbol icon="hub" size={20} />
@@ -755,6 +966,7 @@ function RelationsSection({
             canManageRelations={canManageRelations}
             onReload={load}
             onRelationUpdated={handleRelationUpdated}
+            rollupCount={rollup[rt.key] ?? 0}
           />
         ))}
 
@@ -874,7 +1086,7 @@ function RelationsSection({
                   type: typeLabel(dialogTargetConfig) || dialogTargetTypeKey,
                 })}
               </Button>
-              {selectedRT && hasRelationSubtypes(selectedRT) && (
+              {selectedRT && hasEditableRelationAttributes(selectedRT) && (
                 <Box sx={{ mt: 2, p: 1.5, border: "1px dashed", borderColor: "divider", borderRadius: 1 }}>
                   <Typography variant="caption" fontWeight={600} sx={{ display: "block", mb: 1 }}>
                     {t("relations.optionalDetails")}

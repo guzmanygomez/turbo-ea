@@ -17,6 +17,8 @@ El **Navegador de Procesos** organiza los procesos en tres categorías principal
 
 **Filtros:** Tipo, Madurez (Inicial / Definido / Gestionado / Optimizado), Nivel de automatización, Riesgo (Bajo / Medio / Alto / Crítico), Profundidad (L1 / L2 / L3).
 
+Las tarjetas con un diagrama BPMN publicado muestran un **icono de flujo**: haga clic en él para abrir el diagrama en pantalla completa sin salir del navegador (o para saltar desde allí al editor de flujo completo).
+
 ## Panel de Control BPM
 
 ![Panel de Control BPM con Estadísticas](../assets/img/es/15_bpm_panel_control.png)
@@ -41,14 +43,19 @@ Cada ficha de Proceso de Negocio puede tener un **diagrama de flujo de proceso B
 - **Modelado visual** — Arrastre y suelte elementos BPMN: tareas, eventos, compuertas, carriles y subprocesos
 - **Plantillas de inicio** — Elija entre 6 plantillas BPMN predefinidas para patrones de proceso comunes (o comience desde un lienzo en blanco)
 - **Extracción de elementos** — Al guardar un diagrama, el sistema extrae automáticamente todas las tareas, eventos, compuertas y carriles para su análisis
+- **Colores de los elementos** — Seleccione uno o varios elementos y use el botón del bote de pintura en el panel contextual para aplicar un color. Los colores se guardan en el propio archivo BPMN, por lo que también aparecen en el visor de solo lectura, en las exportaciones y en las impresiones
 
 ### Vinculación de Elementos
 
 Los elementos BPMN pueden ser **vinculados a fichas de EA**. Por ejemplo, vincule una tarea en su diagrama de proceso a la Aplicación que la soporta. Esto crea una conexión trazable entre su modelo de proceso y su panorama de arquitectura:
 
 - Seleccione cualquier tarea, evento o compuerta en el diagrama BPMN
-- El panel de **Vinculador de Elementos** muestra fichas coincidentes (Aplicación, Objeto de Datos, Componente TI)
+- El panel de **Vinculador de Elementos** muestra fichas coincidentes (Aplicación, Objeto de Datos, Componente TI, Organización)
 - Vincule el elemento a una ficha — la conexión se almacena y es visible tanto en el flujo de proceso como en las relaciones de la ficha
+
+### Vincular Organizaciones
+
+La columna *Organización* de la tabla de pasos vincula los pasos a fichas de Organización, justo al lado de Aplicación / Objeto de Datos / Componente TI. A diferencia de esos vínculos de valor único, un paso puede vincularse a **varias** organizaciones — elíjalas una a una y elimínelas individualmente. Los vínculos de pasos son solo informativos — documentan qué organizaciones participan en un paso sin crear ninguna relación entre las fichas; las relaciones Proceso de Negocio ↔ Organización se gestionan por separado en la pestaña Relaciones de la ficha. Los nombres de los carriles siguen siendo texto libre del diagrama y no están conectados a fichas de Organización. La **Matriz Proceso × Organización** de los Informes BPM agrega estos vínculos en todos los procesos.
 
 ### Flujo de Aprobación
 
@@ -80,3 +87,4 @@ Tres informes especializados están disponibles desde el Panel de Control BPM:
 - **Informe de Madurez** — Distribución de procesos por nivel de madurez, tendencias a lo largo del tiempo
 - **Informe de Riesgos** — Vista general de la evaluación de riesgos, destacando los procesos que necesitan atención
 - **Informe de Automatización** — Análisis de los niveles de automatización en todo el panorama de procesos
+- **Matriz Proceso × Organización** — Qué organizaciones ejecutan pasos en qué procesos, con filtrado por organización y desglose de pasos por proceso (a partir de los vínculos informativos de pasos; las relaciones entre fichas no se incluyen)

@@ -15,6 +15,7 @@
         "type": "object"
       },
       "ADRCreate": {
+        "additionalProperties": false,
         "properties": {
           "alternatives_considered": {
             "anyOf": [
@@ -59,6 +60,20 @@
               }
             ],
             "title": "Decision"
+          },
+          "linked_card_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linked Card Ids"
           },
           "related_decisions": {
             "default": [],
@@ -94,6 +109,25 @@
         "title": "ADRRejectRequest",
         "type": "object"
       },
+      "ADRSignRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          }
+        },
+        "title": "ADRSignRequest",
+        "type": "object"
+      },
       "ADRSignatureRequest": {
         "properties": {
           "message": {
@@ -123,6 +157,7 @@
         "type": "object"
       },
       "ADRUpdate": {
+        "additionalProperties": false,
         "properties": {
           "alternatives_considered": {
             "anyOf": [
@@ -134,6 +169,18 @@
               }
             ],
             "title": "Alternatives Considered"
+          },
+          "attributes": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributes"
           },
           "consequences": {
             "anyOf": [
@@ -167,6 +214,20 @@
               }
             ],
             "title": "Decision"
+          },
+          "linked_card_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linked Card Ids"
           },
           "related_decisions": {
             "anyOf": [
@@ -687,6 +748,20 @@
         "title": "Body_import_bpmn_api_v1_bpm_processes__process_id__diagram_import_post",
         "type": "object"
       },
+      "Body_upload_bundle_api_v1_admin_extensions_install_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_bundle_api_v1_admin_extensions_install_post",
+        "type": "object"
+      },
       "Body_upload_favicon_api_v1_settings_favicon_post": {
         "properties": {
           "file": {
@@ -796,6 +871,18 @@
               }
             ],
             "title": "Card Type"
+          },
+          "column_filter_model": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column Filter Model"
           },
           "column_state": {
             "anyOf": [
@@ -915,6 +1002,18 @@
               }
             ],
             "title": "Card Type"
+          },
+          "column_filter_model": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column Filter Model"
           },
           "column_state": {
             "anyOf": [
@@ -1057,6 +1156,11 @@
       },
       "CalculationCreate": {
         "properties": {
+          "blanks_as_zero": {
+            "default": false,
+            "title": "Blanks As Zero",
+            "type": "boolean"
+          },
           "description": {
             "anyOf": [
               {
@@ -1105,6 +1209,11 @@
       },
       "CalculationResponse": {
         "properties": {
+          "blanks_as_zero": {
+            "default": false,
+            "title": "Blanks As Zero",
+            "type": "boolean"
+          },
           "created_at": {
             "anyOf": [
               {
@@ -1198,6 +1307,13 @@
               }
             ],
             "title": "Updated At"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
           }
         },
         "required": [
@@ -1214,6 +1330,17 @@
       },
       "CalculationUpdate": {
         "properties": {
+          "blanks_as_zero": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blanks As Zero"
+          },
           "description": {
             "anyOf": [
               {
@@ -1382,6 +1509,18 @@
               }
             ],
             "title": "Child Strategy"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
           }
         },
         "required": [
@@ -2107,6 +2246,17 @@
             "title": "Name",
             "type": "string"
           },
+          "subtype": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtype"
+          },
           "type": {
             "title": "Type",
             "type": "string"
@@ -2480,6 +2630,17 @@
               }
             ],
             "title": "Parent Id"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
           },
           "stakeholders": {
             "default": [],
@@ -3732,6 +3893,125 @@
         "title": "DateFormatPayload",
         "type": "object"
       },
+      "DescendantRelationRow": {
+        "description": "One rolled-up peer card, deduped across every descendant that links it.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lifecycle": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Lifecycle",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "subtype": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtype"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "via": {
+            "items": {
+              "$ref": "#/components/schemas/DescendantRelationVia"
+            },
+            "title": "Via",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "via"
+        ],
+        "title": "DescendantRelationRow",
+        "type": "object"
+      },
+      "DescendantRelationSummaryEntry": {
+        "description": "One row of the descendant-relation summary \u2014 how many *additional*\ndistinct cards are reachable through this card's descendants for a given\nrelation type.\n\nPowers the \"+N in sub-items\" chip on the Relations section. The count\nexcludes peers the card is already directly related to, so the chip only\never advertises rows the user cannot already see in the list above it.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "relation_type_key": {
+            "title": "Relation Type Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "relation_type_key",
+          "count"
+        ],
+        "title": "DescendantRelationSummaryEntry",
+        "type": "object"
+      },
+      "DescendantRelationVia": {
+        "description": "The descendant that actually owns the relation \u2014 the provenance chip.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type"
+        ],
+        "title": "DescendantRelationVia",
+        "type": "object"
+      },
+      "DescendantRelationsResponse": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/DescendantRelationRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "via_total": {
+            "default": 0,
+            "title": "Via Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rows",
+          "total"
+        ],
+        "title": "DescendantRelationsResponse",
+        "type": "object"
+      },
       "DiagramCreate": {
         "properties": {
           "card_ids": {
@@ -3798,6 +4078,31 @@
         "title": "DiagramGroupsUpdate",
         "type": "object"
       },
+      "DiagramPublishRequest": {
+        "properties": {
+          "access_mode": {
+            "default": "public",
+            "title": "Access Mode",
+            "type": "string"
+          },
+          "allowed_email_domains": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Email Domains"
+          }
+        },
+        "title": "DiagramPublishRequest",
+        "type": "object"
+      },
       "DiagramSave": {
         "properties": {
           "bpmn_xml": {
@@ -3825,6 +4130,24 @@
           "bpmn_xml"
         ],
         "title": "DiagramSave",
+        "type": "object"
+      },
+      "DiagramSsoCallbackRequest": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "redirect_uri": {
+            "title": "Redirect Uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "redirect_uri"
+        ],
+        "title": "DiagramSsoCallbackRequest",
         "type": "object"
       },
       "DiagramUpdate": {
@@ -4046,6 +4369,20 @@
               }
             ],
             "title": "It Component Id"
+          },
+          "organization_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization Ids"
           }
         },
         "title": "ElementUpdate",
@@ -4137,6 +4474,19 @@
         "title": "EmailSettingsPayload",
         "type": "object"
       },
+      "EnabledIn": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "EnabledIn",
+        "type": "object"
+      },
       "EnabledLocalesPayload": {
         "properties": {
           "locales": {
@@ -4151,6 +4501,43 @@
           "locales"
         ],
         "title": "EnabledLocalesPayload",
+        "type": "object"
+      },
+      "EntitlementOut": {
+        "properties": {
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "grace_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grace Until"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "EntitlementOut",
         "type": "object"
       },
       "EolCycle": {
@@ -4311,8 +4698,244 @@
         "title": "EolProductMatch",
         "type": "object"
       },
+      "ExtensionInstallOut": {
+        "properties": {
+          "applied_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied At"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "diff": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diff"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "extension_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extension Key"
+          },
+          "extension_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extension Version"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "previewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previewed At"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "filename",
+          "status"
+        ],
+        "title": "ExtensionInstallOut",
+        "type": "object"
+      },
+      "ExtensionOut": {
+        "properties": {
+          "capabilities": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "entitlement": {
+            "$ref": "#/components/schemas/EntitlementOut"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "version",
+          "status",
+          "enabled",
+          "entitlement"
+        ],
+        "title": "ExtensionOut",
+        "type": "object"
+      },
+      "ExtensionStatusOut": {
+        "properties": {
+          "entitlement_state": {
+            "title": "Entitlement State",
+            "type": "string"
+          },
+          "grants": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Grants",
+            "type": "array"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "version",
+          "entitlement_state"
+        ],
+        "title": "ExtensionStatusOut",
+        "type": "object"
+      },
       "FieldMappingIn": {
         "properties": {
+          "default_value": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Value"
+          },
           "direction": {
             "default": "snow_leads",
             "pattern": "^(snow_leads|turbo_leads)$",
@@ -4325,6 +4948,7 @@
             "type": "boolean"
           },
           "snow_field": {
+            "default": "",
             "title": "Snow Field",
             "type": "string"
           },
@@ -4357,8 +4981,7 @@
           }
         },
         "required": [
-          "turbo_field",
-          "snow_field"
+          "turbo_field"
         ],
         "title": "FieldMappingIn",
         "type": "object"
@@ -4390,6 +5013,15 @@
       },
       "FieldMappingOut": {
         "properties": {
+          "default_value": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Value"
+          },
           "direction": {
             "title": "Direction",
             "type": "string"
@@ -4701,6 +5333,104 @@
           "catalogue_ids"
         ],
         "title": "ImportRequest",
+        "type": "object"
+      },
+      "InstanceOut": {
+        "properties": {
+          "instance_id": {
+            "title": "Instance Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instance_id"
+        ],
+        "title": "InstanceOut",
+        "type": "object"
+      },
+      "LicenseIn": {
+        "properties": {
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "LicenseIn",
+        "type": "object"
+      },
+      "LicenseOut": {
+        "properties": {
+          "customer_id": {
+            "default": "",
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "entitlements": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Entitlements",
+            "type": "array"
+          },
+          "grace_days": {
+            "title": "Grace Days",
+            "type": "integer"
+          },
+          "issued_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issued At"
+          },
+          "key_id": {
+            "default": "",
+            "title": "Key Id",
+            "type": "string"
+          },
+          "licensee": {
+            "title": "Licensee",
+            "type": "string"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          },
+          "uploaded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uploaded At"
+          }
+        },
+        "required": [
+          "licensee",
+          "grace_days",
+          "entitlements"
+        ],
+        "title": "LicenseOut",
         "type": "object"
       },
       "LoginBrandingPayload": {
@@ -6133,6 +6863,24 @@
         "title": "MutationBatchOut",
         "type": "object"
       },
+      "NavbarStylePayload": {
+        "properties": {
+          "navbar_bg": {
+            "default": "#1a1a2e",
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Navbar Bg",
+            "type": "string"
+          },
+          "navbar_fg": {
+            "default": "#ffffff",
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Navbar Fg",
+            "type": "string"
+          }
+        },
+        "title": "NavbarStylePayload",
+        "type": "object"
+      },
       "NotificationPreferencesUpdate": {
         "properties": {
           "email": {
@@ -6183,6 +6931,24 @@
           }
         },
         "title": "OccurrenceCompleteRequest",
+        "type": "object"
+      },
+      "PortalSsoCallbackRequest": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "redirect_uri": {
+            "title": "Redirect Uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "redirect_uri"
+        ],
+        "title": "PortalSsoCallbackRequest",
         "type": "object"
       },
       "PortfolioInsightsRequest": {
@@ -8600,6 +9366,125 @@
         "title": "ProcessFlowVersionUpdate",
         "type": "object"
       },
+      "RecalcCalculationReport": {
+        "properties": {
+          "calculation_id": {
+            "title": "Calculation Id",
+            "type": "string"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/RecalcFailureGroup"
+            },
+            "title": "Failures",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "succeeded": {
+            "title": "Succeeded",
+            "type": "integer"
+          },
+          "target_field": {
+            "title": "Target Field",
+            "type": "string"
+          }
+        },
+        "required": [
+          "calculation_id",
+          "name",
+          "target_field",
+          "succeeded",
+          "failed"
+        ],
+        "title": "RecalcCalculationReport",
+        "type": "object"
+      },
+      "RecalcCardRef": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "RecalcCardRef",
+        "type": "object"
+      },
+      "RecalcFailureGroup": {
+        "description": "One distinct error message, and the cards it was raised on.\n\nGrouped rather than one row per card: a formula that is wrong is wrong the\nsame way on every card, and a list of twenty-one identical messages hides\nthat it is a single fix.",
+        "properties": {
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/RecalcCardRef"
+            },
+            "title": "Cards",
+            "type": "array"
+          },
+          "cards_truncated": {
+            "default": false,
+            "title": "Cards Truncated",
+            "type": "boolean"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "error": {
+            "title": "Error",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "count"
+        ],
+        "title": "RecalcFailureGroup",
+        "type": "object"
+      },
+      "RecalcReport": {
+        "properties": {
+          "calculations": {
+            "items": {
+              "$ref": "#/components/schemas/RecalcCalculationReport"
+            },
+            "title": "Calculations",
+            "type": "array"
+          },
+          "calculations_failed": {
+            "title": "Calculations Failed",
+            "type": "integer"
+          },
+          "calculations_succeeded": {
+            "title": "Calculations Succeeded",
+            "type": "integer"
+          },
+          "cards_processed": {
+            "title": "Cards Processed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cards_processed",
+          "calculations_succeeded",
+          "calculations_failed"
+        ],
+        "title": "RecalcReport",
+        "type": "object"
+      },
       "RegisterRequest": {
         "properties": {
           "display_name": {
@@ -9046,6 +9931,65 @@
         "title": "ReporterOut",
         "type": "object"
       },
+      "RescueAccessRequest": {
+        "properties": {
+          "break_glass": {
+            "default": false,
+            "title": "Break Glass",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "operator_email": {
+            "maxLength": 320,
+            "title": "Operator Email",
+            "type": "string"
+          },
+          "operator_name": {
+            "maxLength": 200,
+            "title": "Operator Name",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "title": "Reason",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 64,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "operator_email",
+          "operator_name",
+          "reason",
+          "expires_at"
+        ],
+        "title": "RescueAccessRequest",
+        "type": "object"
+      },
+      "RescueAccessRevoke": {
+        "properties": {
+          "request_id": {
+            "maxLength": 64,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "title": "RescueAccessRevoke",
+        "type": "object"
+      },
       "ResetPasswordRequest": {
         "properties": {
           "password": {
@@ -9062,6 +10006,410 @@
           "password"
         ],
         "title": "ResetPasswordRequest",
+        "type": "object"
+      },
+      "ResourceBucket": {
+        "description": "Count (and, for files, byte total) grouped by a single key.\n\n``key`` is ``None`` for resources with no category / link type set.",
+        "properties": {
+          "bytes": {
+            "default": 0,
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "count": {
+            "default": 0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          }
+        },
+        "title": "ResourceBucket",
+        "type": "object"
+      },
+      "ResourceBulkDelete": {
+        "properties": {
+          "refs": {
+            "items": {
+              "$ref": "#/components/schemas/ResourceRef"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Refs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "refs"
+        ],
+        "title": "ResourceBulkDelete",
+        "type": "object"
+      },
+      "ResourceBulkDeleteResult": {
+        "description": "Mirrors ``POST /users/bulk-delete``: rows the caller may not touch\nare reported back rather than failing the whole request.",
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "integer"
+          },
+          "skipped": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ResourceSkipped"
+            },
+            "title": "Skipped",
+            "type": "array"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "title": "ResourceBulkDeleteResult",
+        "type": "object"
+      },
+      "ResourceCardTypeBucket": {
+        "description": "Per-card-type rollup \u2014 files and links counted separately.",
+        "properties": {
+          "bytes": {
+            "default": 0,
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "file_count": {
+            "default": 0,
+            "title": "File Count",
+            "type": "integer"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "link_count": {
+            "default": 0,
+            "title": "Link Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "title": "ResourceCardTypeBucket",
+        "type": "object"
+      },
+      "ResourceLargestFile": {
+        "properties": {
+          "card_id": {
+            "format": "uuid",
+            "title": "Card Id",
+            "type": "string"
+          },
+          "card_name": {
+            "title": "Card Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "size",
+          "card_id",
+          "card_name"
+        ],
+        "title": "ResourceLargestFile",
+        "type": "object"
+      },
+      "ResourceListPage": {
+        "description": "Paginated response for ``GET /resources``. Mirrors the\n``{items, total, page, page_size}`` envelope used by ``GET /cards``\nand the rest of the paginated read endpoints.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ResourceOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "ResourceListPage",
+        "type": "object"
+      },
+      "ResourceOut": {
+        "description": "One resource row in the unified list.\n\n``mime_type`` / ``size`` are always ``None`` for links, ``url`` is\nalways ``None`` for files. The binary payload of a file attachment is\nnever included \u2014 download it from\n``GET /file-attachments/{id}/download``.",
+        "properties": {
+          "card_archived": {
+            "title": "Card Archived",
+            "type": "boolean"
+          },
+          "card_id": {
+            "format": "uuid",
+            "title": "Card Id",
+            "type": "string"
+          },
+          "card_name": {
+            "title": "Card Name",
+            "type": "string"
+          },
+          "card_type": {
+            "title": "Card Type",
+            "type": "string"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "creator_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creator Name"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "file",
+              "link"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mime Type"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "card_id",
+          "card_name",
+          "card_type",
+          "card_archived",
+          "name"
+        ],
+        "title": "ResourceOut",
+        "type": "object"
+      },
+      "ResourceRef": {
+        "description": "Addresses one resource. The kind is required because file and\nlink ids live in different tables and could theoretically collide.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "file",
+              "link"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "ResourceRef",
+        "type": "object"
+      },
+      "ResourceSkipped": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "file",
+              "link"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "reason"
+        ],
+        "title": "ResourceSkipped",
+        "type": "object"
+      },
+      "ResourceStats": {
+        "description": "Storage + usage rollup for ``GET /resources/stats``.\n\nHonours the same filters as ``GET /resources`` so the figures always\ndescribe what the caller is currently looking at.",
+        "properties": {
+          "by_card_type": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ResourceCardTypeBucket"
+            },
+            "title": "By Card Type",
+            "type": "array"
+          },
+          "by_category": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ResourceBucket"
+            },
+            "title": "By Category",
+            "type": "array"
+          },
+          "by_link_type": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ResourceBucket"
+            },
+            "title": "By Link Type",
+            "type": "array"
+          },
+          "card_count": {
+            "default": 0,
+            "title": "Card Count",
+            "type": "integer"
+          },
+          "file_count": {
+            "default": 0,
+            "title": "File Count",
+            "type": "integer"
+          },
+          "largest_files": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ResourceLargestFile"
+            },
+            "title": "Largest Files",
+            "type": "array"
+          },
+          "link_count": {
+            "default": 0,
+            "title": "Link Count",
+            "type": "integer"
+          },
+          "total_bytes": {
+            "default": 0,
+            "title": "Total Bytes",
+            "type": "integer"
+          }
+        },
+        "title": "ResourceStats",
         "type": "object"
       },
       "ResourceTypeCreate": {
@@ -10772,7 +12120,48 @@
         "title": "SignatureRequest",
         "type": "object"
       },
+      "SnowLinkOut": {
+        "description": "A resolved deep link from a card to its ServiceNow record.",
+        "properties": {
+          "connection_name": {
+            "title": "Connection Name",
+            "type": "string"
+          },
+          "last_synced_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Synced At"
+          },
+          "sys_id": {
+            "title": "Sys Id",
+            "type": "string"
+          },
+          "table": {
+            "title": "Table",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "connection_name",
+          "table",
+          "sys_id",
+          "url"
+        ],
+        "title": "SnowLinkOut",
+        "type": "object"
+      },
       "SoAWCreate": {
+        "additionalProperties": false,
         "properties": {
           "document_info": {
             "anyOf": [
@@ -10838,6 +12227,7 @@
         "type": "object"
       },
       "SoAWUpdate": {
+        "additionalProperties": false,
         "properties": {
           "document_info": {
             "anyOf": [
@@ -11092,6 +12482,167 @@
         "title": "SsoSettingsPayload",
         "type": "object"
       },
+      "StakeholderBulkOperation": {
+        "description": "One add/remove of a (card, user, role) stakeholder assignment.\n\nThe user may be referenced by ``user_id`` or by ``user_email`` (resolved\ncase-insensitively server-side) \u2014 the spreadsheet importer round-trips\nemails, the grid editor already holds ids.",
+        "properties": {
+          "action": {
+            "default": "add",
+            "enum": [
+              "add",
+              "remove"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "card_id": {
+            "title": "Card Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "row_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Index"
+          },
+          "user_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Email"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "card_id",
+          "role"
+        ],
+        "title": "StakeholderBulkOperation",
+        "type": "object"
+      },
+      "StakeholderBulkRequest": {
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "operations": {
+            "items": {
+              "$ref": "#/components/schemas/StakeholderBulkOperation"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Operations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "operations"
+        ],
+        "title": "StakeholderBulkRequest",
+        "type": "object"
+      },
+      "StakeholderBulkResponse": {
+        "properties": {
+          "added": {
+            "title": "Added",
+            "type": "integer"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "removed": {
+            "title": "Removed",
+            "type": "integer"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/StakeholderBulkResult"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "results",
+          "added",
+          "removed",
+          "failed",
+          "dry_run"
+        ],
+        "title": "StakeholderBulkResponse",
+        "type": "object"
+      },
+      "StakeholderBulkResult": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "row_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Index"
+          },
+          "status": {
+            "enum": [
+              "added",
+              "removed",
+              "noop",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "StakeholderBulkResult",
+        "type": "object"
+      },
       "StakeholderCreate": {
         "properties": {
           "role": {
@@ -11231,6 +12782,19 @@
             ],
             "title": "Description"
           },
+          "key": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
           "label": {
             "anyOf": [
               {
@@ -11281,6 +12845,196 @@
           }
         },
         "title": "StakeholderRoleUpdate",
+        "type": "object"
+      },
+      "StoreCatalogOut": {
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/StoreItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "reachable": {
+            "default": false,
+            "title": "Reachable",
+            "type": "boolean"
+          },
+          "store_url": {
+            "default": "",
+            "title": "Store Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "configured"
+        ],
+        "title": "StoreCatalogOut",
+        "type": "object"
+      },
+      "StoreClaimIn": {
+        "properties": {
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "StoreClaimIn",
+        "type": "object"
+      },
+      "StoreClaimOut": {
+        "properties": {
+          "license": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LicenseOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "StoreClaimOut",
+        "type": "object"
+      },
+      "StoreInstallIn": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "title": "StoreInstallIn",
+        "type": "object"
+      },
+      "StoreItemOut": {
+        "properties": {
+          "demo_url": {
+            "default": "",
+            "title": "Demo Url",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "entitlement_state": {
+            "default": "unlicensed",
+            "title": "Entitlement State",
+            "type": "string"
+          },
+          "free": {
+            "default": false,
+            "title": "Free",
+            "type": "boolean"
+          },
+          "homepage": {
+            "default": "",
+            "title": "Homepage",
+            "type": "string"
+          },
+          "installed_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installed Version"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "license": {
+            "default": "",
+            "title": "License",
+            "type": "string"
+          },
+          "license_url": {
+            "default": "",
+            "title": "License Url",
+            "type": "string"
+          },
+          "long_description": {
+            "default": "",
+            "title": "Long Description",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "payment_link": {
+            "default": "",
+            "title": "Payment Link",
+            "type": "string"
+          },
+          "price": {
+            "default": "",
+            "title": "Price",
+            "type": "string"
+          },
+          "screenshots": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Screenshots",
+            "type": "array"
+          },
+          "update_available": {
+            "default": false,
+            "title": "Update Available",
+            "type": "boolean"
+          },
+          "version": {
+            "default": "",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "name"
+        ],
+        "title": "StoreItemOut",
+        "type": "object"
+      },
+      "StoreRefreshOut": {
+        "properties": {
+          "refreshed": {
+            "title": "Refreshed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "refreshed"
+        ],
+        "title": "StoreRefreshOut",
         "type": "object"
       },
       "StructuredInsight": {
@@ -11887,6 +13641,18 @@
               }
             ],
             "title": "Lead Time Days"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link"
           },
           "recurrence_interval": {
             "default": 1,
@@ -12498,6 +14264,34 @@
         "title": "TurboLensStatusOut",
         "type": "object"
       },
+      "UiExtensionOut": {
+        "properties": {
+          "entitlement_state": {
+            "title": "Entitlement State",
+            "type": "string"
+          },
+          "entry": {
+            "title": "Entry",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "version",
+          "entry",
+          "entitlement_state"
+        ],
+        "title": "UiExtensionOut",
+        "type": "object"
+      },
       "UiPreferencesUpdate": {
         "properties": {
           "dashboard_default_tab": {
@@ -13083,6 +14877,31 @@
       },
       "WebPortalCreate": {
         "properties": {
+          "access_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Mode"
+          },
+          "allowed_email_domains": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Email Domains"
+          },
           "card_config": {
             "anyOf": [
               {
@@ -13158,6 +14977,31 @@
       },
       "WebPortalUpdate": {
         "properties": {
+          "access_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Mode"
+          },
+          "allowed_email_domains": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Email Domains"
+          },
           "card_config": {
             "anyOf": [
               {
@@ -13585,6 +15429,531 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/api/v1/admin/extensions": {
+      "get": {
+        "operationId": "list_extensions_api_v1_admin_extensions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExtensionOut"
+                  },
+                  "title": "Response List Extensions Api V1 Admin Extensions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Extensions",
+        "tags": [
+          "Extensions"
+        ]
+      }
+    },
+    "/api/v1/admin/extensions/install": {
+      "get": {
+        "operationId": "list_installs_api_v1_admin_extensions_install_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExtensionInstallOut"
+                  },
+                  "title": "Response List Installs Api V1 Admin Extensions Install Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Installs",
+        "tags": [
+          "Extensions"
+        ]
+      },
+      "post": {
+        "operationId": "upload_bundle_api_v1_admin_extensions_install_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_bundle_api_v1_admin_extensions_install_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionInstallOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Bundle",
+        "tags": [
+          "Extensions"
+        ]
+      }
+    },
+    "/api/v1/admin/extensions/install/{install_id}": {
+      "delete": {
+        "operationId": "delete_install_api_v1_admin_extensions_install__install_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "install_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Install Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Install",
+        "tags": [
+          "Extensions"
+        ]
+      },
+      "get": {
+        "operationId": "get_install_api_v1_admin_extensions_install__install_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "install_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Install Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionInstallOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Install",
+        "tags": [
+          "Extensions"
+        ]
+      }
+    },
+    "/api/v1/admin/extensions/install/{install_id}/apply": {
+      "post": {
+        "operationId": "apply_install_api_v1_admin_extensions_install__install_id__apply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "install_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Install Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionInstallOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Install",
+        "tags": [
+          "Extensions"
+        ]
+      }
+    },
+    "/api/v1/admin/extensions/instance": {
+      "get": {
+        "description": "This instance's licensing identity (TEA-XXXX-XXXX-XXXX).\n\nQuoted at purchase time (automatically by the in-app Buy button, or\npasted into the storefront's checkout field) so the store aggregates\nevery entitlement bought for this instance into one composite license.\nIdentity only \u2014 never a credential.",
+        "operationId": "get_instance_api_v1_admin_extensions_instance_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstanceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Instance",
+        "tags": [
+          "Extensions"
+        ]
+      }
+    },
+    "/api/v1/admin/extensions/license": {
+      "delete": {
+        "description": "Remove the installed license (deactivate it, keep the audit rows).\n\nExtensions soft-disable exactly as on expiry \u2014 pages disappear, APIs\nrefuse, jobs pause \u2014 but **no data is deleted**, so applying a license\nagain restores everything. Idempotent-ish: 404 when there is nothing to\nremove so the UI can tell the admin.",
+        "operationId": "delete_license_api_v1_admin_extensions_license_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Delete License",
+        "tags": [
+          "Extensions"
+        ]
+      },
+      "get": {
+        "operationId": "get_license_api_v1_admin_extensions_license_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicenseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get License",
+        "tags": [
+          "Extensions"
+        ]
+      },
+      "put": {
+        "operationId": "put_license_api_v1_admin_extensions_license_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LicenseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicenseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put License",
+        "tags": [
+          "Extensions"
+        ]
+      }
+    },
+    "/api/v1/admin/extensions/store/catalog": {
+      "get": {
+        "operationId": "store_catalog_api_v1_admin_extensions_store_catalog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreCatalogOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Store Catalog",
+        "tags": [
+          "Extensions"
+        ]
+      }
+    },
+    "/api/v1/admin/extensions/store/claim": {
+      "post": {
+        "description": "Poll the store for the license of a just-completed purchase.\n\nThe Buy button generated ``token`` client-side and attached it to the\nStripe Payment Link as ``client_reference_id``; the store looks the\ncompleted checkout up by it and returns the issued license, which is\nverified against the trusted vendor keys before being applied \u2014 the\nexact same gate as a manual paste. ``pending`` means the checkout has\nnot completed yet (the frontend keeps polling).",
+        "operationId": "claim_store_purchase_api_v1_admin_extensions_store_claim_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreClaimIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreClaimOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Claim Store Purchase",
+        "tags": [
+          "Extensions"
+        ]
+      }
+    },
+    "/api/v1/admin/extensions/store/install": {
+      "post": {
+        "description": "Download a catalogue bundle and run it through the upload pipeline.\n\nIdentical trust posture to a manual upload: the downloaded bytes are\nlanded in ``data/extension_installs/`` and the background job verifies\nthe vendor signature before anything is previewed or applied. Downloads\nare restricted to the configured store origin (SSRF guard) \u2014 a bundle\nhosted elsewhere must be installed via manual upload.",
+        "operationId": "install_from_store_api_v1_admin_extensions_store_install_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreInstallIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionInstallOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Install From Store",
+        "tags": [
+          "Extensions"
+        ]
+      }
+    },
+    "/api/v1/admin/extensions/store/refresh-license": {
+      "post": {
+        "description": "Immediately refetch the license from the store (per-row Renew button,\nand the instant pickup of an additional purchase by an existing\ncustomer). Only works for store-issued licenses (renewal credential\npresent); returns ``refreshed: false`` when the store has nothing newer.",
+        "operationId": "refresh_store_license_api_v1_admin_extensions_store_refresh_license_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreRefreshOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Refresh Store License",
+        "tags": [
+          "Extensions"
+        ]
+      }
+    },
+    "/api/v1/admin/extensions/{key}": {
+      "delete": {
+        "operationId": "uninstall_extension_api_v1_admin_extensions__key__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Uninstall Extension",
+        "tags": [
+          "Extensions"
+        ]
+      }
+    },
+    "/api/v1/admin/extensions/{key}/enabled": {
+      "put": {
+        "operationId": "set_extension_enabled_api_v1_admin_extensions__key__enabled_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnabledIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Extension Enabled",
+        "tags": [
+          "Extensions"
+        ]
       }
     },
     "/api/v1/admin/workspace/export": {
@@ -14572,6 +16941,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ADRSignRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -16796,7 +19182,7 @@
     },
     "/api/v1/calculations/recalculate/{type_key}": {
       "post": {
-        "description": "Bulk recalculate all cards of a type.",
+        "description": "Bulk recalculate all cards of a type.\n\nReports per calculation how many cards succeeded and failed, and for each\ndistinct error the cards it was raised on \u2014 so a failed run can be acted on\nwithout testing the formula against every card by hand.",
         "operationId": "recalculate_type_api_v1_calculations_recalculate__type_key__post",
         "parameters": [
           {
@@ -16813,7 +19199,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RecalcReport"
+                }
               }
             },
             "description": "Successful Response"
@@ -18442,6 +20830,130 @@
         "summary": "List Card Compliance Findings",
         "tags": [
           "TurboLens"
+        ]
+      }
+    },
+    "/api/v1/cards/{card_id}/descendant-relations": {
+      "get": {
+        "description": "The rolled-up peer cards for one relation type, with provenance.\n\nEach row is a distinct peer card plus the descendants that link it, so a\ncard reachable through two sub-capabilities appears once with two `via`\nentries. Read-only by design \u2014 there is no matching write route.",
+        "operationId": "descendant_relations_api_v1_cards__card_id__descendant_relations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "card_id",
+            "required": true,
+            "schema": {
+              "title": "Card Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Relation type key to roll up",
+            "in": "query",
+            "name": "relation_type",
+            "required": true,
+            "schema": {
+              "description": "Relation type key to roll up",
+              "title": "Relation Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DescendantRelationsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Descendant Relations",
+        "tags": [
+          "cards"
+        ]
+      }
+    },
+    "/api/v1/cards/{card_id}/descendant-relations/summary": {
+      "get": {
+        "description": "Per-relation-type count of cards reachable only through descendants.\n\nPowers the \"+N in sub-items\" chip on the Relations section. Returns an\nempty list for leaf cards and for non-hierarchical types.",
+        "operationId": "descendant_relation_summary_api_v1_cards__card_id__descendant_relations_summary_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "card_id",
+            "required": true,
+            "schema": {
+              "title": "Card Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DescendantRelationSummaryEntry"
+                  },
+                  "title": "Response Descendant Relation Summary Api V1 Cards  Card Id  Descendant Relations Summary Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Descendant Relation Summary",
+        "tags": [
+          "cards"
         ]
       }
     },
@@ -20237,6 +22749,139 @@
         ]
       }
     },
+    "/api/v1/diagrams/public/{slug}": {
+      "get": {
+        "description": "Return the published picture: a name and sanitised DrawIO XML.\n\nDeliberately narrow. No card ids, no relations, no description, no\nlifecycle \u2014 see ``sanitise_public_xml``. The XML is enough for the DrawIO\nlightbox to render, pan and zoom it, and nothing more.",
+        "operationId": "get_public_diagram_api_v1_diagrams_public__slug__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Public Diagram",
+        "tags": [
+          "diagrams"
+        ]
+      }
+    },
+    "/api/v1/diagrams/public/{slug}/gate": {
+      "get": {
+        "description": "Always-public gate metadata: the access mode and, for SSO, the config the\nembed page needs to start the IdP redirect. Returns the name and nothing\nelse \u2014 never the XML, and never anything about the cards behind it.",
+        "operationId": "get_diagram_gate_api_v1_diagrams_public__slug__gate_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Diagram Gate",
+        "tags": [
+          "diagrams"
+        ]
+      }
+    },
+    "/api/v1/diagrams/public/{slug}/sso/callback": {
+      "post": {
+        "description": "Exchange an SSO authorization code for an account-less diagram session.\n\nCreates NO user account \u2014 it mints a cookie scoped to this one diagram.",
+        "operationId": "diagram_sso_callback_api_v1_diagrams_public__slug__sso_callback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiagramSsoCallbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Diagram Sso Callback",
+        "tags": [
+          "diagrams"
+        ]
+      }
+    },
     "/api/v1/diagrams/{diagram_id}": {
       "delete": {
         "operationId": "delete_diagram_api_v1_diagrams__diagram_id__delete",
@@ -20582,6 +23227,96 @@
         ]
       }
     },
+    "/api/v1/diagrams/{diagram_id}/publish": {
+      "delete": {
+        "description": "Withdraw a diagram from public view, effective immediately.\n\nThe slug is retained (not cleared) so re-publishing restores the same URL.\nAccess stops regardless: every public route filters on ``is_published``, so\nan already-issued SSO cookie stops working the moment this returns.",
+        "operationId": "unpublish_diagram_api_v1_diagrams__diagram_id__publish_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "diagram_id",
+            "required": true,
+            "schema": {
+              "title": "Diagram Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unpublish Diagram",
+        "tags": [
+          "diagrams"
+        ]
+      },
+      "post": {
+        "description": "Publish a diagram as a read-only link, or update how it is shared.\n\nGated on ``diagrams.publish`` rather than ``diagrams.manage``: making\ninternal architecture readable outside the instance is a different\nauthority from editing it, and most installs will want to grant it far\nmore narrowly.",
+        "operationId": "publish_diagram_api_v1_diagrams__diagram_id__publish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "diagram_id",
+            "required": true,
+            "schema": {
+              "title": "Diagram Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiagramPublishRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish Diagram",
+        "tags": [
+          "diagrams"
+        ]
+      }
+    },
     "/api/v1/documents/{doc_id}": {
       "delete": {
         "operationId": "delete_document_api_v1_documents__doc_id__delete",
@@ -20619,7 +23354,7 @@
     },
     "/api/v1/eol/mass-link": {
       "post": {
-        "description": "Bulk-link cards to EOL products/cycles.\n\nExpects a list of: [{card_id, eol_product, eol_cycle}].\nFor ITComponent type, lifecycle dates are synced from EOL data.",
+        "description": "Bulk-link cards to EOL products/cycles.\n\nExpects a list of: [{card_id, eol_product, eol_cycle}].\nOnly the EOL product/cycle association is recorded \u2014 lifecycle phase dates\n(including End of Life, the decommission date) are manually owned and are\nnever auto-filled from vendor EOL data.",
         "operationId": "mass_eol_link_api_v1_eol_mass_link_post",
         "requestBody": {
           "content": {
@@ -20988,7 +23723,7 @@
     },
     "/api/v1/events/stream": {
       "get": {
-        "description": "SSE endpoint. Accepts token via query parameter or httpOnly cookie.",
+        "description": "SSE endpoint. Accepts token via query parameter or httpOnly cookie.\n\nEvents are filtered per subscriber: `admin.events` holders receive the full\naudit stream, everyone else only their own user-directed events (see\n`_event_visible_to`).",
         "operationId": "event_stream_api_v1_events_stream_get",
         "parameters": [
           {
@@ -21025,6 +23760,117 @@
         "summary": "Event Stream",
         "tags": [
           "events"
+        ]
+      }
+    },
+    "/api/v1/ext-assets/{key}/{version}/{asset_path}": {
+      "get": {
+        "description": "Serve an extension's frontend bundle files.\n\nDeliberately unauthenticated: dynamic ``import()`` cannot carry an\nAuthorization header, and extension code is not a secret \u2014 the\nentitlement gate is the authenticated ``/extensions/ui-manifest``\nplus every ``/ext/{key}/`` data API. Same-origin serving keeps the\nstrict ``script-src 'self'`` CSP intact. The version segment exists\nfor cache-busting (assets are served immutable).",
+        "operationId": "get_extension_asset_api_v1_ext_assets__key___version___asset_path__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_path",
+            "required": true,
+            "schema": {
+              "title": "Asset Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Extension Asset",
+        "tags": [
+          "Extensions"
+        ]
+      }
+    },
+    "/api/v1/extensions/status": {
+      "get": {
+        "description": "Least-privilege list of enabled extensions for any authenticated user.",
+        "operationId": "extensions_status_api_v1_extensions_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExtensionStatusOut"
+                  },
+                  "title": "Response Extensions Status Api V1 Extensions Status Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Extensions Status",
+        "tags": [
+          "Extensions"
+        ]
+      }
+    },
+    "/api/v1/extensions/ui-manifest": {
+      "get": {
+        "description": "UI bundles the frontend loader should import \u2014 THE entitlement gate\nfor extension UI. Only enabled extensions with a usable (active or\ngrace) entitlement and a frontend entry are listed.",
+        "operationId": "ui_manifest_api_v1_extensions_ui_manifest_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UiExtensionOut"
+                  },
+                  "title": "Response Ui Manifest Api V1 Extensions Ui Manifest Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ui Manifest",
+        "tags": [
+          "Extensions"
         ]
       }
     },
@@ -22297,6 +25143,47 @@
         ]
       }
     },
+    "/api/v1/metamodel/types/{key}/generate-references": {
+      "post": {
+        "description": "Assign IDs to existing cards of this type that don't have one yet (#811).\n\nExplicit, on-demand counterpart to the type Save (which never backfills).\nFill-only + idempotent \u2014 re-running only fills newly-missing cards, so it\nnever rewrites an existing ID. Uses the stored config, so save the format\nfirst.\n\n(A future \"regenerate all\" would compose from the same primitive:\n``UPDATE cards SET reference = NULL WHERE type = key`` then\n``backfill_references_for_type`` \u2014 deliberately not built here.)",
+        "operationId": "generate_references_api_v1_metamodel_types__key__generate_references_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate References",
+        "tags": [
+          "metamodel"
+        ]
+      }
+    },
     "/api/v1/metamodel/types/{key}/option-usage": {
       "get": {
         "description": "Return how many active cards use a specific option value.",
@@ -22360,6 +25247,47 @@
         ]
       }
     },
+    "/api/v1/metamodel/types/{key}/reference-usage": {
+      "get": {
+        "description": "Report card ID coverage for the metamodel editor (#811).\n\n- ``count``   \u2014 cards of this type that already have an ID.\n- ``missing`` \u2014 cards with no ID yet (what the Generate button would fill).\n- ``locked``  \u2014 once ``count`` > 0 the prefix / start / min-digits are frozen.",
+        "operationId": "get_reference_usage_api_v1_metamodel_types__key__reference_usage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Reference Usage",
+        "tags": [
+          "metamodel"
+        ]
+      }
+    },
     "/api/v1/metamodel/types/{key}/section-usage": {
       "get": {
         "description": "Return how many active cards have data for any field in a section.",
@@ -22414,7 +25342,7 @@
     },
     "/api/v1/metamodel/types/{type_key}/stakeholder-roles": {
       "get": {
-        "description": "List stakeholder roles for a card type.",
+        "description": "List stakeholder roles for a card type, each with its assignment count.",
         "operationId": "list_stakeholder_roles_api_v1_metamodel_types__type_key__stakeholder_roles_get",
         "parameters": [
           {
@@ -22512,6 +25440,49 @@
       }
     },
     "/api/v1/metamodel/types/{type_key}/stakeholder-roles/{role_key}": {
+      "delete": {
+        "description": "Permanently delete an **unused** stakeholder role.\n\nRefused (409) while anyone holds the role on a card of this type, while a\nsurvey targets it, or when it is the type's last active role \u2014 archive is the\nanswer in those cases. Deleting an in-use role would silently strip the\ncard-level permissions it grants from real users, unrecoverably, and\n``stakeholders.role`` has no foreign key to make that visible.",
+        "operationId": "delete_stakeholder_role_api_v1_metamodel_types__type_key__stakeholder_roles__role_key__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "type_key",
+            "required": true,
+            "schema": {
+              "title": "Type Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "role_key",
+            "required": true,
+            "schema": {
+              "title": "Role Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Stakeholder Role",
+        "tags": [
+          "stakeholder-roles"
+        ]
+      },
       "get": {
         "description": "Get a single stakeholder role with permissions.",
         "operationId": "get_stakeholder_role_api_v1_metamodel_types__type_key__stakeholder_roles__role_key__get",
@@ -22711,6 +25682,56 @@
           }
         },
         "summary": "Restore Stakeholder Role",
+        "tags": [
+          "stakeholder-roles"
+        ]
+      }
+    },
+    "/api/v1/metamodel/types/{type_key}/stakeholder-roles/{role_key}/usage": {
+      "get": {
+        "description": "Report what would block deleting or re-keying this role.\n\nMirrors ``GET /metamodel/types/{key}/field-usage`` so the admin UI can show\nthe impact before offering a destructive action.",
+        "operationId": "stakeholder_role_usage_api_v1_metamodel_types__type_key__stakeholder_roles__role_key__usage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "type_key",
+            "required": true,
+            "schema": {
+              "title": "Type Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "role_key",
+            "required": true,
+            "schema": {
+              "title": "Role Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stakeholder Role Usage",
         "tags": [
           "stakeholder-roles"
         ]
@@ -24088,6 +27109,123 @@
         "summary": "Mark Read",
         "tags": [
           "notifications"
+        ]
+      }
+    },
+    "/api/v1/ops/export": {
+      "get": {
+        "description": "Stream the full secret-stripped workspace bundle (same content as\nAdmin \u2192 Workspace export) for control-plane backups and GDPR data exports.",
+        "operationId": "ops_export_api_v1_ops_export_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ops Export",
+        "tags": [
+          "ops"
+        ]
+      }
+    },
+    "/api/v1/ops/info": {
+      "get": {
+        "operationId": "ops_info_api_v1_ops_info_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ops Info",
+        "tags": [
+          "ops"
+        ]
+      }
+    },
+    "/api/v1/ops/rescue-access": {
+      "delete": {
+        "description": "Immediately deactivate the rescue account created for a request.",
+        "operationId": "revoke_rescue_access_api_v1_ops_rescue_access_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RescueAccessRevoke"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Rescue Access",
+        "tags": [
+          "ops"
+        ]
+      },
+      "post": {
+        "description": "Create (or refresh) a time-boxed admin account for a control-plane operator.\n\nThe account is dedicated to this request (deterministic email derived from the\nrequest id), carries ``access_expires_at``, and is handed back as a single-use\npassword-setup link. Expiry is enforced instance-side by ``get_current_user``\nand the hourly deactivation loop \u2014 a control-plane outage cannot extend access.",
+        "operationId": "create_rescue_access_api_v1_ops_rescue_access_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RescueAccessRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Rescue Access",
+        "tags": [
+          "ops"
         ]
       }
     },
@@ -25793,6 +28931,60 @@
               ],
               "title": "Type"
             }
+          },
+          {
+            "description": "Card-type key. Keeps relations whose source **or** target card is of this type \u2014 what the inventory grid needs to populate the relation columns of the selected type in one round trip.",
+            "in": "query",
+            "name": "card_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Card-type key. Keeps relations whose source **or** target card is of this type \u2014 what the inventory grid needs to populate the relation columns of the selected type in one round trip.",
+              "title": "Card Type"
+            }
+          },
+          {
+            "description": "Comma-separated relation-type keys. Superset of `type`, which stays for backwards compatibility.",
+            "in": "query",
+            "name": "types",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated relation-type keys. Superset of `type`, which stays for backwards compatibility.",
+              "title": "Types"
+            }
+          },
+          {
+            "description": "Comma-separated card UUIDs. Keeps relations whose source **or** target is one of them. At most 500 ids per request \u2014 chunk larger sets client-side.",
+            "in": "query",
+            "name": "card_ids",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated card UUIDs. Keeps relations whose source **or** target is one of them. At most 500 ids per request \u2014 chunk larger sets client-side.",
+              "title": "Card Ids"
+            }
           }
         ],
         "responses": {
@@ -26219,6 +29411,26 @@
         ]
       }
     },
+    "/api/v1/reports/bpm/process-organization-matrix": {
+      "get": {
+        "description": "Process \u00d7 Organization execution grid, built from the informative\nstep \u2194 Organization links (never from card relations).\n\nOne cell per (process, organization) pair with the executed steps\nembedded, so the frontend can render both the matrix and the per-process\ndrill-down from a single call.",
+        "operationId": "process_organization_matrix_api_v1_reports_bpm_process_organization_matrix_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Process Organization Matrix",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
     "/api/v1/reports/bpm/value-stream-matrix": {
       "get": {
         "description": "Value-stream \u00d7 Organization matrix with processes at intersections.\n\nOnly shows BusinessContext items with subtype 'valueStream' as columns.\nIncludes related apps and parent_id for nested process display.",
@@ -26616,7 +29828,7 @@
     },
     "/api/v1/reports/matrix": {
       "get": {
-        "description": "Matrix report: cross-reference grid.",
+        "description": "Matrix report: cross-reference grid between two card types.\n\nEach intersection carries the relations behind it \u2014 their relation type,\ntheir orientation relative to the row axis, and their attribute values \u2014 so\nthe grid can show what the link *means*, not merely that one exists.\n\n``direction`` is structural: ``forward`` keeps relations whose source is the\nrow card, ``reverse`` those whose target is. Semantic notions of direction\nthat a metamodel may express as a relation attribute are just attribute\nvalues, filtered through ``attr`` like any other.\n\nOnly the *edges* are filtered server-side; the row and column card lists are\nalways complete. Pruning cards here would break their ``parent_id`` chains\nand silently flatten the hierarchy the client rebuilds \u2014 the client already\nhides cards with no surviving edge, and can do so without a refetch.",
         "operationId": "matrix_api_v1_reports_matrix_get",
         "parameters": [
           {
@@ -26636,6 +29848,49 @@
             "schema": {
               "default": "BusinessCapability",
               "title": "Col Type",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated relation-type keys to restrict the grid to",
+            "in": "query",
+            "name": "relation_types",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated relation-type keys to restrict the grid to",
+              "title": "Relation Types"
+            }
+          },
+          {
+            "description": "Attribute filter, `relationTypeKey.fieldKey:value`. Repeatable.",
+            "in": "query",
+            "name": "attr",
+            "required": false,
+            "schema": {
+              "description": "Attribute filter, `relationTypeKey.fieldKey:value`. Repeatable.",
+              "items": {
+                "type": "string"
+              },
+              "title": "Attr",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "default": "any",
+              "pattern": "^(any|forward|reverse)$",
+              "title": "Direction",
               "type": "string"
             }
           }
@@ -26936,9 +30191,515 @@
         ]
       }
     },
+    "/api/v1/resources": {
+      "get": {
+        "description": "Every file attachment and document link in the repository, paginated.\n\nReturns the ``{items, total, page, page_size}`` envelope used by the\nother paginated read endpoints. Binary payloads are never included \u2014\nfetch a file from ``GET /file-attachments/{id}/download``.",
+        "operationId": "list_resources_api_v1_resources_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "description": "Repeatable: \"file\" and/or \"link\"",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeatable: \"file\" and/or \"link\"",
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "card_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Card Id"
+            }
+          },
+          {
+            "description": "Repeatable card-type keys",
+            "in": "query",
+            "name": "card_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeatable card-type keys",
+              "title": "Card Type"
+            }
+          },
+          {
+            "description": "Repeatable file-category / link-type keys",
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeatable file-category / link-type keys",
+              "title": "Category"
+            }
+          },
+          {
+            "description": "Repeatable, files only",
+            "in": "query",
+            "name": "mime_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeatable, files only",
+              "title": "Mime Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "created_by",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created By"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          },
+          {
+            "in": "query",
+            "name": "archived",
+            "required": false,
+            "schema": {
+              "default": "any",
+              "pattern": "^(any|active|archived)$",
+              "title": "Archived",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort_by",
+            "required": false,
+            "schema": {
+              "default": "created_at",
+              "title": "Sort By",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort_dir",
+            "required": false,
+            "schema": {
+              "default": "desc",
+              "pattern": "^(asc|desc)$",
+              "title": "Sort Dir",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceListPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Resources",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/api/v1/resources/bulk-delete": {
+      "post": {
+        "description": "Delete a mixed selection of file attachments and document links.\n\nEach row is checked with the *same* gate the single-row DELETE\nendpoints use (``documents.manage`` or the card-level\n``card.manage_documents``), so this endpoint can never do what the\ncaller could not already do one row at a time. Rows the caller may\nnot touch are reported in ``skipped`` rather than failing the whole\nrequest \u2014 the contract ``POST /users/bulk-delete`` already uses.",
+        "operationId": "bulk_delete_resources_api_v1_resources_bulk_delete_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResourceBulkDelete"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceBulkDeleteResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bulk Delete Resources",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/api/v1/resources/stats": {
+      "get": {
+        "description": "Storage and usage rollup over the *same* filter set as the list, so\nthe KPI tiles always describe what the admin is looking at (the\npattern ``GET /risks/metrics`` uses for the Risk Register).",
+        "operationId": "resource_stats_api_v1_resources_stats_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "card_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Card Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "card_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Card Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mime_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mime Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "created_by",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created By"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          },
+          {
+            "in": "query",
+            "name": "archived",
+            "required": false,
+            "schema": {
+              "default": "any",
+              "pattern": "^(any|active|archived)$",
+              "title": "Archived",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceStats"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resource Stats",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
     "/api/v1/risks": {
       "get": {
-        "description": "Paginated, filterable risk list. ``status`` / ``category`` /\n``level`` / ``source_type`` are repeatable query params (e.g.\n``?status=identified&status=analysed``).",
+        "description": "Paginated, filterable risk list. ``status`` / ``category`` /\n``level`` / ``source_type`` / ``card_id`` / ``card_type`` are repeatable\nquery params (e.g. ``?status=identified&status=analysed``). Repeated\nvalues OR within a dimension and AND across dimensions, so\n``?card_id=a&card_id=b&card_type=Application`` reads as \"risks affecting\ncard a or b, that also touch at least one Application\".",
         "operationId": "list_risks_api_v1_risks_get",
         "parameters": [
           {
@@ -27021,13 +30782,35 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 {
                   "type": "null"
                 }
               ],
               "title": "Card Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "card_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Card Type"
             }
           },
           {
@@ -27313,13 +31096,35 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 {
                   "type": "null"
                 }
               ],
               "title": "Card Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "card_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Card Type"
             }
           },
           {
@@ -27481,13 +31286,35 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 {
                   "type": "null"
                 }
               ],
               "title": "Card Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "card_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Card Type"
             }
           },
           {
@@ -27964,7 +31791,7 @@
     },
     "/api/v1/roles": {
       "get": {
-        "description": "List all roles. Any authenticated user can view roles.",
+        "description": "List all roles.\n\nAny authenticated user can resolve role labels/colors (for role chips), but\nonly `admin.roles` holders get the permission matrix and per-role user\ncounts \u2014 those stay admin-only.",
         "operationId": "list_roles_api_v1_roles_get",
         "parameters": [
           {
@@ -28427,6 +32254,54 @@
         "summary": "Update Saved Report",
         "tags": [
           "saved-reports"
+        ]
+      }
+    },
+    "/api/v1/servicenow/cards/{card_id}/links": {
+      "get": {
+        "description": "Return deep links to the ServiceNow record(s) a card is synced with.\n\nDerived read-only from the sync identity map \u2014 a card may map to more than\none ServiceNow record if it is covered by several mappings. The URL is the\ndirect record form on the connection's instance.",
+        "operationId": "list_card_servicenow_links_api_v1_servicenow_cards__card_id__links_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "card_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Card Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SnowLinkOut"
+                  },
+                  "title": "Response List Card Servicenow Links Api V1 Servicenow Cards  Card Id  Links Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Card Servicenow Links",
+        "tags": [
+          "ServiceNow"
         ]
       }
     },
@@ -30465,6 +34340,64 @@
         ]
       }
     },
+    "/api/v1/settings/navbar-style": {
+      "get": {
+        "description": "Public endpoint \u2014 returns the configured navbar colors.\n\nPublic because every authenticated user's shell needs the colors at boot\nand they are not sensitive. Falls back to the built-in navy defaults.",
+        "operationId": "get_navbar_style_api_v1_settings_navbar_style_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Navbar Style",
+        "tags": [
+          "settings"
+        ]
+      },
+      "patch": {
+        "description": "Admin endpoint \u2014 set the navbar background + text color for all users.",
+        "operationId": "update_navbar_style_api_v1_settings_navbar_style_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NavbarStylePayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Navbar Style",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
     "/api/v1/settings/ppm-enabled": {
       "get": {
         "description": "Public endpoint \u2014 returns whether the PPM module is enabled.",
@@ -31373,6 +35306,48 @@
         "summary": "Card Permissions Schema",
         "tags": [
           "stakeholder-roles"
+        ]
+      }
+    },
+    "/api/v1/stakeholders/bulk": {
+      "post": {
+        "description": "Batched add/remove of stakeholder role assignments.\n\nUsed by the spreadsheet importer to apply `stakeholder:<role>` columns in\none round-trip instead of two calls per row. Mirrors `POST /relations/bulk`:\neach operation independently succeeds or fails, `dry_run=true` validates\neverything inside a savepoint that is rolled back.\n\nPermission: `stakeholders.manage` (or the card-level\n`card.manage_stakeholders` grant), checked per referenced card.",
+        "operationId": "bulk_stakeholders_api_v1_stakeholders_bulk_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StakeholderBulkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StakeholderBulkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bulk Stakeholders",
+        "tags": [
+          "stakeholders"
         ]
       }
     },
@@ -32406,6 +36381,44 @@
           }
         },
         "summary": "List All Todos",
+        "tags": [
+          "todos"
+        ]
+      },
+      "post": {
+        "description": "Create a todo that is not attached to a card \u2014 e.g. pointing at an\nADR, a risk, or an extension page via ``link``. Same shape and rules as\ncard todos (assignment notification included), just without a card.",
+        "operationId": "create_standalone_todo_api_v1_todos_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TodoCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Standalone Todo",
         "tags": [
           "todos"
         ]
@@ -34375,6 +38388,47 @@
         ]
       }
     },
+    "/api/v1/web-portals/public/{slug}/gate": {
+      "get": {
+        "description": "Always-public gate metadata: which access mode a portal uses, and \u2014 for\nSSO \u2014 the config the viewer needs to start the IdP redirect. Returns only\nname + mode + SSO-initiation fields; never description, filters, or cards.",
+        "operationId": "get_portal_gate_api_v1_web_portals_public__slug__gate_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Portal Gate",
+        "tags": [
+          "web-portals"
+        ]
+      }
+    },
     "/api/v1/web-portals/public/{slug}/relation-options": {
       "get": {
         "description": "Return card name/id pairs for a given type, for filter dropdowns.\n\nM-7: Only returns cards that are actually related to at least one card\nvisible through the portal (matching the portal's card_type and filters).",
@@ -34420,6 +38474,57 @@
           }
         },
         "summary": "Get Public Portal Relation Options",
+        "tags": [
+          "web-portals"
+        ]
+      }
+    },
+    "/api/v1/web-portals/public/{slug}/sso/callback": {
+      "post": {
+        "description": "Exchange an SSO authorization code for an account-less portal session.\n\nVerifies the id_token against the org IdP, enforces email verification, the\nGoogle hosted-domain rule, and the portal's optional email-domain allowlist,\nthen mints a portal-session cookie. Creates NO user account.",
+        "operationId": "portal_sso_callback_api_v1_web_portals_public__slug__sso_callback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalSsoCallbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Portal Sso Callback",
         "tags": [
           "web-portals"
         ]

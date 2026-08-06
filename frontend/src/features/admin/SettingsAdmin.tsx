@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, Suspense, lazy } from "react";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Paper from "@mui/material/Paper";
@@ -40,6 +40,8 @@ import {
   DEFAULT_ARCHIVE_RETENTION_DAYS,
 } from "@/hooks/useArchiveRetentionDays";
 import { invalidateLoginBranding } from "@/hooks/useLoginBranding";
+import { useNavbarStyle } from "@/hooks/useNavbarStyle";
+import NavbarStyleCard from "./NavbarStyleCard";
 import { useMetamodel } from "@/hooks/useMetamodel";
 import { useEnabledLocales } from "@/hooks/useEnabledLocales";
 import { SUPPORTED_LOCALES, LOCALE_LABELS, type SupportedLocale } from "@/i18n";
@@ -52,6 +54,7 @@ const AiAdmin = lazy(() => import("./AiAdmin"));
 const TurboLensAdmin = lazy(() => import("./TurboLensAdmin"));
 const MigrationHub = lazy(() => import("./MigrationHub"));
 const AuditLogAdmin = lazy(() => import("./AuditLogAdmin"));
+const ResourcesAdmin = lazy(() => import("./ResourcesAdmin"));
 
 const TAB_KEYS = [
   "general",
@@ -63,6 +66,7 @@ const TAB_KEYS = [
   "turbolens",
   "migration",
   "audit-log",
+  "resources",
 ];
 
 function TabLoader() {
@@ -134,6 +138,25 @@ interface EmailSettings {
   configured: boolean;
 }
 
+/** The subset of `/settings/bootstrap` this page reads. */
+interface GeneralSettingsBootstrap {
+  currency: string;
+  date_format: string;
+  app_title: string;
+  bpm_enabled: boolean;
+  ppm_enabled: boolean;
+  grc_enabled: boolean;
+  sponsor_button_enabled: boolean;
+  file_uploads_enabled: boolean;
+  enabled_locales: string[];
+  fiscal_year_start: number;
+  archive_retention_days: number;
+  login_tagline: string;
+  login_tagline_hidden: boolean;
+  login_help_text: string;
+  login_help_link: string;
+}
+
 interface LogoInfo {
   has_custom_logo: boolean;
   mime_type: string;
@@ -174,6 +197,7 @@ function GeneralTab() {
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState("");
   const [snack, setSnack] = useState("");
+  const navbarStyle = useNavbarStyle();
 
   // Logo state
   const [hasCustomLogo, setHasCustomLogo] = useState(false);
@@ -275,29 +299,19 @@ function GeneralTab() {
   }, [cachedLocales]);
 
   useEffect(() => {
+    // One aggregated read instead of the twelve per-setting GETs this page used
+    // to fire. `/settings/bootstrap` already returns every scalar below from a
+    // single query against the singleton row; twelve separate calls meant
+    // twelve round-trips *and* twelve reads of that row. Called directly rather
+    // than via `primeBootstrap()`, which memoises for the session — this page
+    // must see values fresh after an admin edit.
     Promise.all([
+      api.get<GeneralSettingsBootstrap>("/settings/bootstrap"),
       api.get<EmailSettings>("/settings/email"),
       api.get<LogoInfo>("/settings/logo/info"),
       api.get<FaviconInfo>("/settings/favicon/info"),
-      api.get<{ currency: string }>("/settings/currency"),
-      api.get<{ enabled: boolean }>("/settings/bpm-enabled"),
-      api.get<{ locales: string[] }>("/settings/enabled-locales"),
-      api.get<{ enabled: boolean }>("/settings/ppm-enabled"),
-      api.get<{ month: number }>("/settings/fiscal-year-start"),
-      api.get<{ days: number }>("/settings/archive-retention-days"),
-      api.get<{ app_title: string }>("/settings/app-title"),
-      api.get<{ date_format: string }>("/settings/date-format"),
-      api.get<{ enabled: boolean }>("/settings/grc-enabled"),
-      api.get<{ enabled: boolean }>("/settings/file-uploads-enabled"),
-      api.get<{
-        login_tagline: string;
-        login_tagline_hidden: boolean;
-        login_help_text: string;
-        login_help_link: string;
-      }>("/settings/login-branding"),
-      api.get<{ enabled: boolean }>("/settings/sponsor-button-enabled"),
     ])
-      .then(([emailData, logoData, faviconData, currencyData, bpmData, localesData, ppmData, fiscalData, archiveRetentionData, appTitleData, dateFormatData, grcData, fileUploadsData, loginBrandingData, sponsorButtonData]) => {
+      .then(([general, emailData, logoData, faviconData]) => {
         setEmailMethod(emailData.method ?? "smtp_basic");
         setSmtpHost(emailData.smtp_host);
         setSmtpPort(emailData.smtp_port);
@@ -317,29 +331,30 @@ function GeneralTab() {
         setConfigured(emailData.configured);
         setHasCustomLogo(logoData.has_custom_logo);
         setHasCustomFavicon(faviconData.has_custom_favicon);
-        setSelectedCurrency(currencyData.currency);
-        setBpmEnabled(bpmData.enabled);
-        setPpmEnabled(ppmData.enabled);
-        setGrcEnabled(grcData.enabled);
-        setSponsorButtonEnabled(sponsorButtonData.enabled);
-        setFileUploadsEnabled(fileUploadsData.enabled);
-        setFiscalYearStart(fiscalData.month);
-        setArchiveRetentionDays(archiveRetentionData.days);
-        setArchiveRetentionInput(String(archiveRetentionData.days));
-        setAppTitle(appTitleData.app_title || DEFAULT_APP_TITLE);
-        const fmt = (DATE_FORMAT_OPTIONS as string[]).includes(dateFormatData.date_format)
-          ? (dateFormatData.date_format as DateFormatKey)
+        setSelectedCurrency(general.currency);
+        setBpmEnabled(general.bpm_enabled);
+        setPpmEnabled(general.ppm_enabled);
+        setGrcEnabled(general.grc_enabled);
+        setSponsorButtonEnabled(general.sponsor_button_enabled);
+        setFileUploadsEnabled(general.file_uploads_enabled);
+        setFiscalYearStart(general.fiscal_year_start);
+        setArchiveRetentionDays(general.archive_retention_days);
+        setArchiveRetentionInput(String(general.archive_retention_days));
+        setAppTitle(general.app_title || DEFAULT_APP_TITLE);
+        const fmt = (DATE_FORMAT_OPTIONS as string[]).includes(general.date_format)
+          ? (general.date_format as DateFormatKey)
           : DEFAULT_DATE_FORMAT;
         setCurrentDateFormat(fmt);
         setSelectedDateFormat(fmt);
-        const validLocales = (localesData.locales || []).filter((l: string): l is SupportedLocale =>
-          (SUPPORTED_LOCALES as readonly string[]).includes(l),
+        const validLocales = (general.enabled_locales || []).filter(
+          (l: string): l is SupportedLocale =>
+            (SUPPORTED_LOCALES as readonly string[]).includes(l),
         );
         if (validLocales.length > 0) setEnabledLocales(validLocales);
-        setLoginTagline(loginBrandingData.login_tagline || "");
-        setLoginTaglineHidden(Boolean(loginBrandingData.login_tagline_hidden));
-        setLoginHelpText(loginBrandingData.login_help_text || "");
-        setLoginHelpLink(loginBrandingData.login_help_link || "");
+        setLoginTagline(general.login_tagline || "");
+        setLoginTaglineHidden(Boolean(general.login_tagline_hidden));
+        setLoginHelpText(general.login_help_text || "");
+        setLoginHelpLink(general.login_help_link || "");
       })
       .catch((e) => setError(e instanceof Error ? e.message : t("common:errors.generic")))
       .finally(() => setLoading(false));
@@ -794,7 +809,8 @@ function GeneralTab() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              bgcolor: "#1a1a2e",
+              // Preview the logo on the configured navbar background.
+              bgcolor: navbarStyle.bg,
               p: 1,
             }}
           >
@@ -844,6 +860,9 @@ function GeneralTab() {
           </Box>
         </Box>
       </Paper>
+
+      {/* Navbar style */}
+      <NavbarStyleCard onSaved={setSnack} onError={setError} />
 
       {/* Favicon Settings */}
       <Paper sx={{ p: 3, mb: 3 }}>
@@ -1106,6 +1125,37 @@ function GeneralTab() {
         </Box>
       </Paper>
 
+      {/* Fiscal Year Start */}
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Box sx={{ display: "flex", alignItems: "center", mb: 2, gap: 1 }}>
+          <MaterialSymbol icon="calendar_month" size={22} color="#555" />
+          <Typography variant="h6" fontWeight={600}>
+            {t("settings.fiscal.title")}
+          </Typography>
+        </Box>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {t("settings.fiscal.description")}
+        </Typography>
+        <TextField
+          select
+          size="small"
+          label={t("settings.fiscal.startMonth")}
+          value={fiscalYearStart}
+          onChange={(e) => handleFiscalYearSave(Number(e.target.value))}
+          disabled={savingFiscal}
+          sx={{ minWidth: 220 }}
+        >
+          {Array.from({ length: 12 }, (_, i) => {
+            const d = new Date(2000, i, 1);
+            return (
+              <MenuItem key={i + 1} value={i + 1}>
+                {d.toLocaleString(undefined, { month: "long" })} ({i + 1})
+              </MenuItem>
+            );
+          })}
+        </TextField>
+      </Paper>
+
       {/* Enabled Languages */}
       <Paper sx={{ p: 3, mb: 3 }}>
         <Box sx={{ display: "flex", alignItems: "center", mb: 2, gap: 1 }}>
@@ -1150,37 +1200,6 @@ function GeneralTab() {
         >
           {savingLocales ? t("common:labels.loading") : t("common:actions.save")}
         </Button>
-      </Paper>
-
-      {/* Fiscal Year Start */}
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ display: "flex", alignItems: "center", mb: 2, gap: 1 }}>
-          <MaterialSymbol icon="calendar_month" size={22} color="#555" />
-          <Typography variant="h6" fontWeight={600}>
-            {t("settings.fiscal.title")}
-          </Typography>
-        </Box>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {t("settings.fiscal.description")}
-        </Typography>
-        <TextField
-          select
-          size="small"
-          label={t("settings.fiscal.startMonth")}
-          value={fiscalYearStart}
-          onChange={(e) => handleFiscalYearSave(Number(e.target.value))}
-          disabled={savingFiscal}
-          sx={{ minWidth: 220 }}
-        >
-          {Array.from({ length: 12 }, (_, i) => {
-            const d = new Date(2000, i, 1);
-            return (
-              <MenuItem key={i + 1} value={i + 1}>
-                {d.toLocaleString(undefined, { month: "long" })} ({i + 1})
-              </MenuItem>
-            );
-          })}
-        </TextField>
       </Paper>
 
       {/* File Uploads Toggle */}
@@ -1730,6 +1749,7 @@ export default function SettingsAdmin() {
     t("settings.tabs.turbolens"),
     t("settings.tabs.migration"),
     t("settings.tabs.auditLog", "Audit log"),
+    t("settings.tabs.resources"),
   ];
 
   const handleTabChange = (_: React.SyntheticEvent, newIndex: number) => {
@@ -1801,6 +1821,11 @@ export default function SettingsAdmin() {
       {tabIndex === 8 && (
         <Suspense fallback={<TabLoader />}>
           <AuditLogAdmin />
+        </Suspense>
+      )}
+      {tabIndex === 9 && (
+        <Suspense fallback={<TabLoader />}>
+          <ResourcesAdmin />
         </Suspense>
       )}
     </Box>

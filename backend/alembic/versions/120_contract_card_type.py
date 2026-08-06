@@ -165,8 +165,8 @@ _EXTRACTION_INSTRUCTIONS = (
     "5. Ignore renewal terms, option periods, and notice periods unless the document"
     " has no primary term, in which case set the fields to null rather than using a"
     " renewal figure.\n"
-    "6. Dates may appear in any format (e.g. \"1 July 2026\", \"07/01/2026\","
-    " \"July 1st, 2026\"). Interpret ambiguous numeric dates using DD/MM/YYYY"
+    '6. Dates may appear in any format (e.g. "1 July 2026", "07/01/2026",'
+    ' "July 1st, 2026"). Interpret ambiguous numeric dates using DD/MM/YYYY'
     " (Australian) convention unless the document clearly indicates otherwise."
 )
 
@@ -252,9 +252,7 @@ def upgrade() -> None:
     # Card type — insert on fresh DB, update fields + section_config on
     # existing installs
     # ------------------------------------------------------------------
-    row = conn.execute(
-        sa.text("SELECT id FROM card_types WHERE key = 'Contract'")
-    ).fetchone()
+    row = conn.execute(sa.text("SELECT id FROM card_types WHERE key = 'Contract'")).fetchone()
 
     if row is None:
         conn.execute(
@@ -381,16 +379,13 @@ def upgrade() -> None:
             },
         )
 
-
     # ------------------------------------------------------------------
     # AI file extraction scenario — upsert for the Contract card type.
     # Update instructions + target_fields if a scenario already exists so
     # the canonical definition stays current after a schema change.
     # ------------------------------------------------------------------
     scenario_row = conn.execute(
-        sa.text(
-            "SELECT id FROM file_extraction_scenarios WHERE card_type_key = 'Contract'"
-        )
+        sa.text("SELECT id FROM file_extraction_scenarios WHERE card_type_key = 'Contract'")
     ).fetchone()
 
     if scenario_row is None:

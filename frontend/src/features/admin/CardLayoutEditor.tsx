@@ -13,6 +13,10 @@ import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import DialogActions from "@mui/material/DialogActions";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import ListSubheader from "@mui/material/ListSubheader";
@@ -43,9 +47,11 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
-import type { CardType, SectionDef, FieldDef, SectionConfig } from "@/types";
+import type { CardType, SectionDef, FieldDef, SectionConfig, TranslationMap } from "@/types";
 import { hasActiveRules } from "@/utils/visibilityRules";
 import { useResolveLabel, useFieldLabel } from "@/hooks/useResolveLabel";
+import { isSectionCollapsedByDefault } from "@/features/cards/sectionConfig";
+import { LOCALE_LABELS, SUPPORTED_LOCALES } from "@/i18n";
 import { api } from "@/api/client";
 import MaterialSymbol from "@/components/MaterialSymbol";
 
@@ -57,6 +63,7 @@ const BUILTIN_SECTIONS: { key: string; labelKey: string; icon: string; onlyIf?: 
   { key: "lifecycle", labelKey: "cardLayout.builtinSections.lifecycle", icon: "timeline" },
   { key: "hierarchy", labelKey: "cardLayout.builtinSections.hierarchy", icon: "account_tree", onlyIf: (ct) => ct.has_hierarchy },
   { key: "successors", labelKey: "cardLayout.builtinSections.successors", icon: "arrow_forward", onlyIf: (ct) => ct.has_successors },
+  { key: "tags", labelKey: "cardLayout.builtinSections.tags", icon: "sell" },
   { key: "relations", labelKey: "cardLayout.builtinSections.relations", icon: "hub" },
 ];
 
@@ -64,7 +71,7 @@ const BUILTIN_SECTIONS: { key: string; labelKey: string; icon: string; onlyIf?: 
 // header shows the same weight badge as fields (mirrors __dataQuality buckets).
 const DQ_SECTION_KEYS = new Set(["description", "lifecycle", "relations"]);
 
-const DEFAULT_ORDER = ["description", "eol", "lifecycle", "__custom__", "hierarchy", "successors", "relations"];
+const DEFAULT_ORDER = ["description", "eol", "lifecycle", "__custom__", "hierarchy", "successors", "tags", "relations"];
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -80,6 +87,14 @@ function getSectionOrder(cfg: Record<string, SectionConfig>, customSections: Sec
       const relIdx = result.indexOf("relations");
       if (relIdx >= 0) result.splice(relIdx, 0, "successors");
       else result.push("successors");
+    }
+    // Same for "tags" — it postdates the saved orders of existing installs, and
+    // CardDetailContent injects it the same way, so the editor must list it or
+    // the card would render a section the admin cannot see or configure.
+    if (!existing.has("tags")) {
+      const relIdx = result.indexOf("relations");
+      if (relIdx >= 0) result.splice(relIdx, 0, "tags");
+      else result.push("tags");
     }
     return result.filter((k) => {
       if (k === "hierarchy" && !hasHierarchy) return false;
@@ -302,14 +317,60 @@ function SortableFieldCard({
   );
 }
 
+// ── GroupTranslationsDialog ──────────────────────────────────────
+// Per-locale display names for a subsection (group) header. Persists to the
+// section's `groupTranslations[groupName]` map; AttributeSection resolves the
+// header via the same label resolver, so translated headers appear on the card.
+
+export function GroupTranslationsDialog({
+  groupName, initial, onClose, onSave,
+}: {
+  groupName: string;
+  initial: TranslationMap;
+  onClose: () => void;
+  onSave: (map: TranslationMap) => void;
+}) {
+  const { t } = useTranslation(["admin", "common"]);
+  const [map, setMap] = useState<TranslationMap>({ ...initial });
+  return (
+    <Dialog open onClose={onClose} maxWidth="xs" fullWidth disableRestoreFocus>
+      <DialogTitle>{t("cardLayout.groupTranslationsTitle", { group: groupName })}</DialogTitle>
+      <DialogContent>
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
+          {t("cardLayout.groupTranslationsHint")}
+        </Typography>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, mt: 0.5 }}>
+          {SUPPORTED_LOCALES.map((loc) => (
+            <TextField
+              key={loc}
+              size="small"
+              label={LOCALE_LABELS[loc] || loc}
+              value={map[loc] ?? ""}
+              placeholder={groupName}
+              onChange={(e) => setMap((m) => ({ ...m, [loc]: e.target.value }))}
+            />
+          ))}
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>{t("common:actions.cancel")}</Button>
+        <Button variant="contained" onClick={() => onSave(map)}>
+          {t("common:actions.save")}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 // ── SortableGroupCard ────────────────────────────────────────────
 
 function SortableGroupCard({
-  id, groupName, children, onRename, onRemove,
+  id, groupName, displayName, children, onRename, onRemove, onEditTranslations,
 }: {
-  id: string; groupName: string; children: React.ReactNode;
+  id: string; groupName: string; displayName?: string; children: React.ReactNode;
   onRename?: (newName: string) => void;
   onRemove?: () => void;
+  onEditTranslations?: () => void;
 }) {
   const { t } = useTranslation(["admin"]);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -359,13 +420,20 @@ function SortableGroupCard({
               sx={{ flex: 1, color: "text.secondary", cursor: onRename ? "pointer" : "default" }}
               onDoubleClick={onRename ? () => { setRname(groupName); setRenaming(true); } : undefined}
             >
-              {groupName}
+              {displayName || groupName}
             </Typography>
           )}
           {!renaming && onRename && (
             <Tooltip title={t("cardLayout.renameGroup")}>
               <IconButton size="small" onClick={() => { setRname(groupName); setRenaming(true); }} sx={{ p: 0.25 }}>
                 <MaterialSymbol icon="edit" size={14} />
+              </IconButton>
+            </Tooltip>
+          )}
+          {!renaming && onEditTranslations && (
+            <Tooltip title={t("cardLayout.editGroupTranslations")}>
+              <IconButton size="small" onClick={onEditTranslations} sx={{ p: 0.25 }}>
+                <MaterialSymbol icon="translate" size={14} />
               </IconButton>
             </Tooltip>
           )}
@@ -546,15 +614,37 @@ function VisualFieldLayout({
   }, [containers]);
 
   // Persist containers to backend
-  const saveContainers = useCallback(async (c: Containers) => {
+  const saveContainers = useCallback(async (c: Containers, extra?: Partial<SectionDef>) => {
     const newFields = containersToFields(c, fieldMap);
     // Extract all group names (including empty groups) so they survive round-trips
     const groups = Object.keys(c).filter(k => k.startsWith("group:")).map(k => k.slice(6));
     const schema = [...fieldsSchema];
-    schema[sectionIdx] = { ...schema[sectionIdx], fields: newFields, groups };
+    schema[sectionIdx] = { ...schema[sectionIdx], fields: newFields, groups, ...(extra ?? {}) };
     await api.patch(`/metamodel/types/${typeKey}`, { fields_schema: schema });
     onRefresh();
   }, [fieldMap, fieldsSchema, sectionIdx, typeKey, onRefresh]);
+
+  // Per-locale group (subsection) header translations, persisted to the
+  // section's groupTranslations map. Empty values are pruned.
+  const [groupTxName, setGroupTxName] = useState<string | null>(null);
+  const saveGroupTranslations = useCallback(
+    async (groupName: string, map: TranslationMap) => {
+      const cleaned: TranslationMap = {};
+      for (const [k, v] of Object.entries(map)) if (v && v.trim()) cleaned[k] = v.trim();
+      const nextGT: Record<string, TranslationMap> = { ...(section.groupTranslations ?? {}) };
+      if (Object.keys(cleaned).length > 0) nextGT[groupName] = cleaned;
+      else delete nextGT[groupName];
+      const schema = [...fieldsSchema];
+      schema[sectionIdx] = {
+        ...schema[sectionIdx],
+        groupTranslations: Object.keys(nextGT).length > 0 ? nextGT : undefined,
+      };
+      await api.patch(`/metamodel/types/${typeKey}`, { fields_schema: schema });
+      setGroupTxName(null);
+      onRefresh();
+    },
+    [section.groupTranslations, fieldsSchema, sectionIdx, typeKey, onRefresh],
+  );
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id);
@@ -723,7 +813,16 @@ function VisualFieldLayout({
       }
     }
     setContainers(updated);
-    await saveContainers(updated);
+    // Carry any per-locale translations across the rename so the header stays
+    // translated under its new name.
+    const oldName = oldGid.slice(6);
+    const gt = section.groupTranslations;
+    let extra: Partial<SectionDef> | undefined;
+    if (gt && gt[oldName]) {
+      const { [oldName]: moved, ...rest } = gt;
+      extra = { groupTranslations: { ...rest, [newName]: moved } };
+    }
+    await saveContainers(updated, extra);
   };
 
   // Find field index in the original section.fields for edit/delete callbacks
@@ -741,8 +840,10 @@ function VisualFieldLayout({
             <SortableGroupCard
               id={itemId}
               groupName={gname}
+              displayName={rl(gname, section.groupTranslations?.[gname])}
               onRename={(newName) => handleRenameGroup(itemId, newName)}
               onRemove={() => handleRemoveGroup(itemId)}
+              onEditTranslations={() => setGroupTxName(gname)}
             >
               {groupItems.map((fk) => {
                 const f = fieldMap.get(fk);
@@ -878,6 +979,15 @@ function VisualFieldLayout({
           </MenuItem>
         ))}
       </Menu>
+
+      {groupTxName !== null && (
+        <GroupTranslationsDialog
+          groupName={groupTxName}
+          initial={section.groupTranslations?.[groupTxName] ?? {}}
+          onClose={() => setGroupTxName(null)}
+          onSave={(map) => saveGroupTranslations(groupTxName, map)}
+        />
+      )}
     </Box>
   );
 }
@@ -1001,7 +1111,7 @@ function SortableSectionItem({
         </Box>
         <Tooltip title={t("cardLayout.collapsedByDefault")}>
           <FormControlLabel
-            control={<Switch size="small" checked={cfg.defaultExpanded === false} disabled={!!cfg.hidden} onChange={onToggleCollapsed} />}
+            control={<Switch size="small" checked={isSectionCollapsedByDefault(cfg, sectionKey)} disabled={!!cfg.hidden} onChange={onToggleCollapsed} />}
             label={<Typography variant="caption" color="text.secondary">{t("cardLayout.collapsedByDefault")}</Typography>}
             sx={{ mr: 0, ml: 0 }}
           />
@@ -1153,7 +1263,10 @@ export default function CardLayoutEditor({
                 key={key} id={key} sectionKey={key} info={info} cfg={cfgForSection}
                 expanded={expandedSections.has(key)}
                 onToggleExpand={() => toggleExpand(key)}
-                onToggleCollapsed={() => updateSectionProp(key, { defaultExpanded: cfgForSection.defaultExpanded === false })}
+                // The switch means "collapsed", so a click writes the negation
+                // of the *effective* current state — which, for a section that
+                // was never configured, depends on that section's own default.
+                onToggleCollapsed={() => updateSectionProp(key, { defaultExpanded: isSectionCollapsedByDefault(cfgForSection, key) })}
                 onToggleHidden={() => updateSectionProp(key, { hidden: !cfgForSection.hidden })}
                 onDelete={info.isCustom && promptDeleteSection && schemaIdx >= 0 ? () => promptDeleteSection(schemaIdx) : undefined}
                 onVisibilityRules={info.isCustom && openSectionVisibilityRules && schemaIdx >= 0 ? () => openSectionVisibilityRules(schemaIdx) : undefined}

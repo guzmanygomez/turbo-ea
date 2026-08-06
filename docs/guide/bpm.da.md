@@ -7,7 +7,7 @@
 
 ## Procesnavigator
 
-![Forretningsprocesnavigator](../assets/img/en/14_bpm_navigator.png)
+![Forretningsprocesnavigator](../assets/img/da/14_bpm_navigator.png)
 
 **Procesnavigatoren** organiserer processer i tre hovedkategorier:
 
@@ -17,9 +17,11 @@
 
 **Filtre:** Type, Modenhed (Initial / Defineret / Styret / Optimeret), Automatiseringsniveau, Risiko (Lav / Middel / Høj / Kritisk), Dybde (L1 / L2 / L3).
 
+Kort med et publiceret BPMN-diagram viser et **flow-ikon** — klik på det for at åbne diagrammet i fuld skærm uden at forlade navigatoren (eller for at springe derfra til den fulde flow-editor).
+
 ## BPM-dashboard
 
-![BPM-dashboard med statistik](../assets/img/en/15_bpm_dashboard.png)
+![BPM-dashboard med statistik](../assets/img/da/15_bpm_dashboard.png)
 
 **BPM-dashboardet** giver et ledelsesoverblik over processtatus:
 
@@ -34,21 +36,26 @@ Diagrammer viser fordeling efter procestype, modenhedsniveau og automatiseringsn
 
 ## Procesflow-editor
 
-![BPM Procesflow-editor](../assets/img/en/47_bpm_process_flow.png)
+![BPM Procesflow-editor](../assets/img/da/47_bpm_process_flow.png)
 
 Hvert forretningsproceskort kan have et **BPMN 2.0-procesflowdiagram**. Editoren bruger [bpmn-js](https://bpmn.io/) og tilbyder:
 
 - **Visuel modellering** — Træk og slip BPMN-elementer: opgaver, hændelser, gateways, baner og underprocesser
 - **Skabeloner** — Vælg blandt 6 forudbyggede BPMN-skabeloner til almindelige procesmønstre (eller start fra et blankt lærred)
 - **Element­udtrækning** — Når du gemmer et diagram, udtrækker systemet automatisk alle opgaver, hændelser, gateways og baner til analyse
+- **Elementfarver** — Markér et eller flere elementer, og brug malerbøtte-knappen i kontekstpanelet for at give dem en farve. Farverne gemmes i selve BPMN-filen, så de vises også i den skrivebeskyttede fremviser, i eksporter og på udskrifter
 
 ### Element-linking
 
 BPMN-elementer kan **linkes til EA-kort**. For eksempel kan du linke en opgave i dit procesdiagram til den applikation, der understøtter den. Det skaber en sporbar forbindelse mellem din procesmodel og dit arkitekturlandskab:
 
 - Vælg en opgave, hændelse eller gateway i BPMN-diagrammet
-- Panelet **Element Linker** viser matchende kort (Application, Data Object, IT Component)
+- Panelet **Element Linker** viser matchende kort (Application, Data Object, IT Component, Organization)
 - Link elementet til et kort — forbindelsen gemmes og er synlig i både procesflowet og kortets relationer
+
+### Link organisationer
+
+Kolonnen *Organisation* i trintabellen linker trin til organisationskort, lige ved siden af Application / Data Object / IT Component. I modsætning til disse enkeltværdi-links kan et trin linkes til **flere** organisationer — vælg dem én ad gangen, og fjern dem enkeltvis. Trinlinks er kun informative — de dokumenterer, hvilke organisationer der er involveret i et trin, uden at oprette nogen relation mellem kortene; relationer mellem Forretningsproces og Organisation håndteres separat på kortets Relationer-fane. Banenavne forbliver ren fri tekst fra diagrammet og er ikke forbundet med organisationskort. **Proces × Organisation-matrixen** i BPM-rapporterne aggregerer disse links på tværs af alle processer.
 
 ### Godkendelses­arbejdsproces
 
@@ -80,3 +87,4 @@ Tre specialiserede rapporter er tilgængelige fra BPM-dashboardet:
 - **Modenhedsrapport** — Fordeling af processer efter modenhedsniveau, tendenser over tid
 - **Risikorapport** — Risikovurderings­overblik, der fremhæver processer, der kræver opmærksomhed
 - **Automatiseringsrapport** — Analyse af automatiseringsniveauer på tværs af proceslandskabet
+- **Proces × Organisation-matrix** — Hvilke organisationer udfører trin i hvilke processer, med filtrering pr. organisation og trin-drill-down pr. proces (baseret på de informative trinlinks; kortrelationer indgår ikke)

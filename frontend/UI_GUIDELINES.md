@@ -203,6 +203,33 @@ Always include `startIcon={<MaterialSymbol icon="…" size={iconSize.sm} />}` ra
 
 For MUI tables, table headers use `bgcolor: "action.hover"` for subtle distinction.
 
+**Every AG Grid gets column freeze.** Users must be able to pin a column to the
+leading edge so it stays readable while scrolling sideways. AG Grid Community
+renders pinned columns but ships no UI to pin one, so the affordance lives in
+`useColumnFreeze` (`src/components/grid/useColumnFreeze.ts`) and is wired into
+each grid in three lines:
+
+```tsx
+const columnFreeze = useColumnFreeze(gridRef, { frozen, onFrozenChange });
+const defaultColDef = useMemo(() => ({ …, headerComponentParams: columnFreeze.headerComponentParams }), [columnFreeze.headerComponentParams]);
+<Box ref={columnFreeze.containerRef} sx={{ …, ...columnFreeze.sx }}>
+  <AgGridReact … selectionColumnDef={columnFreeze.selectionColumnDef} />   // grids with row selection
+```
+
+`selectionColumnDef` pins the checkbox column. Without it a frozen column renders to the *left* of the checkboxes — AG Grid draws the entire pinned region ahead of everything unpinned, and the selection column's `lockPosition: "left"` only orders it within its own region.
+
+The hook feeds the *stock* header component a template with two extra pins
+(freeze on hover, unfreeze while frozen) — never hand-roll a `headerComponent`
+for this, as that loses sorting, the sort indicator, and the filter button.
+Persist the frozen colIds as **their own pref** and stamp them on with
+`applyFrozen()` — on every grid, including one that also stores a full
+`getColumnState()` snapshot. A snapshot is the wrong owner: its restore stops
+re-applying once the user drags or resizes a column, so a freeze made after
+that is saved and never restored. Strip `pinned` from the restored snapshot so
+the two can't fight. A frozen column is a per-user preference and must survive
+a reload like column visibility and width do. The same `frozenColumns` / `toggleFrozen` feed the
+per-row pin in the page's Columns tab (§3.11).
+
 ### 3.7 Status Representation
 
 Always render status through one of these:
@@ -227,6 +254,12 @@ Always render status through one of these:
 
 Skeleton loaders are not used today — that's a deliberate choice. If introduced, add a section here.
 
+**Control-driven surfaces** (a grid or chart whose data reloads when a picker, tab or search box changes) have three additional rules — see the request-hook conventions in `CLAUDE.md` for the mechanics:
+
+- **The loading indicator starts when the control changes, not when the request does.** If the input is debounced, the debounce window is part of the loading state. A surface that looks settled while it is still showing the previous query's rows reads as a wrong answer, not a pending one.
+- **A failed fetch renders an `<Alert severity="error">`, never an endless spinner.** Keep the previous data behind the alert where there is any; blanking the view loses the user's context for no benefit.
+- **Don't blank to a spinner on every picker change when the previous render is still meaningful.** The exception is a view whose labels are drawn from the *current* selection while the body comes from the response — a matrix, a cross-tab — where showing the previous payload under the new headers is worse than a spinner, because nothing on screen signals the mismatch.
+
 ### 3.9 Icons
 
 - Use `<MaterialSymbol icon="..." size={...} color={...}/>` — never raw SVG.
@@ -241,7 +274,7 @@ The **Layered Dependency View (LDV)** is Turbo EA's house notation for showing d
 - The **Card Detail** dependency section (the immediate neighbourhood of one card)
 - The **TurboLens Architect** target architecture (existing + proposed cards)
 
-It is implemented by `C4DiagramView` and `c4Layout` (file names retained for backwards compatibility — the public name of the view is **Layered Dependency View**).
+It is implemented by `LayeredDependencyView` and `layeredDependencyLayout` (card-detail wrapper: `LayeredDependencySection`). The one remaining `c4` identifier is the toggle-button / saved-report `chartMode` value `"c4"`, kept so existing saved reports keep resolving — leave it alone, and don't reintroduce `C4*` names elsewhere.
 
 **Grouping — the four EA layers, fixed order**
 
@@ -258,7 +291,7 @@ Layer order is invariant. Layer color = `LAYER_COLORS[layer]` from `theme/tokens
 
 | Property | Convention |
 | --- | --- |
-| Shape | Rounded rectangle, 200 × 72 px (`C4_NODE_W`, `C4_NODE_H` in `c4Layout.ts`) |
+| Shape | Rounded rectangle, 200 × 72 px (`LDV_NODE_W`, `LDV_NODE_H` in `layeredDependencyLayout.ts`) |
 | Color | Card type color from the metamodel (`CARD_TYPE_COLORS` / type record) |
 | Label | Card name (top, semibold) + card-type label (bottom, italic) |
 | Border — existing | 1.5 px solid, type color |
@@ -324,7 +357,57 @@ These are presentation/interaction concerns layered in the component — they do
 ❌ Don't
 - Don't introduce a fifth layer or reorder the four. Layer identity is part of the standard.
 - Don't reuse this view for runtime / deployment / sequence diagrams — it is a *dependency* view of the EA metamodel, not a behavioural diagram.
-- Don't substitute another graph library (vis.js, Cytoscape, mermaid) for the Layered Dependency View. Mermaid is still fine for one-off illustrative diagrams (e.g. ArchitectureDiagram in TurboLens reports), but the canonical interactive dependency view is React Flow + `c4Layout`.
+- Don't substitute another graph library (vis.js, Cytoscape, mermaid) for the Layered Dependency View. Mermaid is still fine for one-off illustrative diagrams (e.g. ArchitectureDiagram in TurboLens reports), but the canonical interactive dependency view is React Flow + `layeredDependencyLayout`.
+
+### 3.11 Grid Filter Sidebar
+
+Every AG Grid page that filters server-side uses the same left-hand sidebar. The reference implementation is the **Inventory** sidebar (`features/inventory/InventoryFilterSidebar.tsx`); `AuditLogFilterSidebar`, `RiskFilterSidebar` and `ResourcesFilterSidebar` follow it. Reuse the shape — a sidebar that only *works* like the inventory but doesn't *look* like it is a bug.
+
+**Structure** — collapsed rail (44 px, chevron + active-filter count chip) · tabbed header (**Filters** / **Columns**, each with an 8 px primary dot when it has changes) · scrollable body of collapsible sections · 4 px drag resize handle (`MIN_WIDTH` 220 / `MAX_WIDTH` 480).
+
+**Every section header carries a glyph and a count.** Never a bare label:
+
+```tsx
+<SectionHeader
+  label={t("filter.types")}
+  icon="category"          // section glyph, size 16 — required
+  expanded={expandedSections.types}
+  onToggle={() => toggleSection("types")}
+  count={filters.types.length}   // primary Chip, height 18, hidden when 0
+/>
+```
+
+**Options are never plain checkbox rows.** Each row must carry the visual identity the entity has everywhere else in the app:
+
+| Option kind | Rendering |
+| --- | --- |
+| Card type | Checkbox + `<MaterialSymbol icon={type.icon} size={16} color={type.color}/>` + label resolved via `useTypeLabel()` |
+| Resource type / tag / other icon-bearing metamodel entity | Checkbox + its own `icon` (fall back to a sensible default, never nothing) |
+| Select option with a colour but no icon | Checkbox + a 10 px `borderRadius: "50%"` dot in that colour |
+| Mutually-exclusive state (approval, lifecycle, archived, severity) | A wrapped row of selectable `<Chip>`s — filled `bgcolor: color, color: "#fff"` when selected, outlined `borderColor/color: color` when not |
+| "No value" / empty | Italic `EmptyChip` (`text.secondary`, `fontStyle: "italic"`) |
+
+Take colours from `theme/tokens.ts` (`STATUS_COLORS`, `SEVERITY_COLORS`, `LAYER_COLORS`, …) or the entity's own `color` — never a fresh hex.
+
+**Search fields** get a `search` start adornment and, once non-empty, a `close` end-adornment button that clears them.
+
+**The Columns tab** mirrors the Filters tab, plus:
+
+- One `<MaterialSymbol>` per column in a second `<ListItemIcon>` (`minWidth: 24`) — the column picker is a list of glyph + label, not bare text.
+- An italic **Select all** row with an `indeterminate` checkbox.
+- A selected-count caption and a **Reset** button with a `restart_alt` icon.
+- Locked columns render checked + `disabled`, wrapped in a `<Tooltip placement="right">` explaining why, with `"&.Mui-disabled": { opacity: 0.7 }` so they stay readable.
+- **A freeze pin on every row** — `<ColumnFreezeToggle frozen onToggle/>` (`src/components/grid/ColumnFreezeToggle.tsx`), fed by the page's `columnFreeze.frozenColumns` / `toggleFrozen` (§3.6). It is the discoverable twin of the pin on the column header, and it must be a **sibling** of the `ListItemButton` inside a `Box sx={{ display: "flex" }}` — never a child, because a locked row disables its button and would swallow the pin's click, and a locked column is exactly the one worth freezing. Rows built with the shared `FilterCheckboxList` get it by passing `frozen` / `onToggleFrozen` on the item.
+
+**Filter/column state is persisted** under a `turboea.<page>.prefs` localStorage key through a defensive loader that validates every field and falls back to defaults — a malformed or stale entry must never break the page.
+
+✅ Do
+- Give each new section a glyph and a count, even when the section holds a single control.
+- Keep the sidebar fully controlled: it receives `filters` / `visibleColumns` / `frozenColumns` and their setters, plus pre-built option lists. It fetches nothing itself.
+
+❌ Don't
+- Don't ship a section header without an icon, or an option row that is just a checkbox and text.
+- Don't filter client-side over the fetched page when the grid pages server-side — that narrows one page, not the result set.
 
 ---
 

@@ -34,6 +34,15 @@ Clique em **+ Novo Tipo** para criar um tipo de card personalizado. Configure:
 
 Clique em qualquer tipo para abrir o **Painel de Detalhe do Tipo**. Aqui você pode configurar:
 
+#### Cor do tipo
+
+Cada tipo de cartão — incluindo os nativos — tem uma cor personalizável usada no inventário, nos relatórios, nas vistas de dependências e nos diagramas. Isso permite alinhar o Turbo EA às convenções visuais da sua organização (por exemplo, paletas TOGAF/ArchiMate: elementos de negócio em amarelo/laranja, aplicações em azul).
+
+- Escolha uma cor com a amostra de cor no painel. Um aviso aparece quando a cor escolhida tem contraste muito baixo sobre fundos claros ou escuros.
+- Os tipos nativos mostram um botão de **redefinir** ao lado da amostra de cor sempre que a cor difere do padrão do Turbo EA, para que seja sempre possível voltar à paleta padrão.
+- O texto exibido sobre as cores do tipo (chips, formas de diagrama) alterna automaticamente entre preto e branco para manter a legibilidade, tanto no modo claro quanto no escuro.
+- O seletor mostra uma **pré-visualização ao vivo** ao lado da paleta: o nome do tipo, o chip, o ícone do cartão, o subtipo, a pílula de ID do cartão e um nó da vista de dependências, renderizados uma vez no modo claro e outra no modo escuro, atualizando-se durante a escolha.
+
 #### Campos
 
 Campos definem os atributos personalizados disponíveis nos cards deste tipo. Cada campo possui:
@@ -60,6 +69,17 @@ Campos são organizados em **seções** na página de detalhe do card. Você pod
 - Reordenar campos dentro de uma seção arrastando-os e mover um campo para outra seção pela ação **mover**
 
 O nome de seção especial `__description` adiciona campos à seção de Descrição da página de detalhe do card.
+
+#### ID do cartão
+
+Ative a **geração de ID do cartão** para atribuir aos cartões deste tipo um ID estável e legível (por exemplo `APP-00001`). O ID aparece como uma etiqueta copiável ao lado do tipo do cartão, como coluna opcional (ordenável e filtrável) no inventário, nas exportações para Excel e nas fórmulas de campos calculados (via `data.reference`).
+
+O **número é sempre gerado automaticamente**; você só controla o **prefixo**. Ao ativar, um prefixo sugerido (derivado do nome do tipo, ex. `APP-`) é mostrado como texto — clique no lápis para alterá-lo. Duas definições ajustam o número:
+
+- **Começar em** — o primeiro número da série (padrão `1`).
+- **Dígitos mín.** — largura do preenchimento com zeros (padrão `5`), então `1` aparece como `00001`. É um mínimo; os números aumentam ao ultrapassá-lo. Um **Exemplo** mostra ao vivo o primeiro ID.
+
+Os IDs são **globalmente únicos, somente leitura e nunca reutilizados ou alterados**. A sequência numérica é mantida **por prefixo em todo o workspace**, portanto dois tipos que partilham um prefixo formam uma única série contínua e sem colisões. Assim que um cartão deste tipo tem um ID, todo o formato — prefixo, início e dígitos mín. — fica bloqueado (os campos ficam somente leitura); ainda pode desativar a geração. Salvar nunca atribui IDs aos cartões existentes; use o botão dedicado **Gerar IDs** para preencher o backlog sob demanda (com barra de progresso e confirmação).
 
 #### Pontuação de qualidade dos dados
 
@@ -97,6 +117,15 @@ Quando nenhum subtipo é selecionado num card (ou o tipo não possui subtipos), 
 
 Defina papéis personalizados para este tipo (ex.: "Proprietário da Aplicação", "Proprietário Técnico"). Cada papel carrega **permissões em nível de card** que são combinadas com o papel em nível de aplicação do usuário ao acessar um card. Veja [Usuários e Papéis](users.md) para mais informações sobre o modelo de permissões.
 
+Cada papel tem uma **chave** (o identificador armazenado nos cartões, usado pelas colunas de importação/exportação `stakeholder:<chave_do_papel>`) e um **rótulo** (o que os utilizadores veem). A chave segue a mesma convenção de qualquer outra chave do metamodelo: apenas letras e dígitos, começando por uma letra, de 3 a 50 caracteres, por convenção em camelCase como `businessArchitect`. É preenchida automaticamente a partir do rótulo, pelo que raramente precisará de a escrever.
+
+Os papéis podem ser removidos de duas formas:
+
+- **Arquivar** — o papel permanece nos cartões que já o utilizam, mas deixa de poder ser atribuído e deixa de conceder as suas permissões ao nível do cartão. Os papéis arquivados aparecem atrás do interruptor **Mostrar arquivados** e podem ser restaurados a qualquer momento. É a escolha certa para um papel que foi realmente utilizado.
+- **Excluir** — permanente, e só é oferecido enquanto o papel não estiver em uso. O Turbo EA recusa excluir um papel que alguém detenha num cartão deste tipo, que um inquérito utilize, ou que seja o último papel ativo do tipo; a caixa de confirmação indica o motivo e propõe arquivá-lo em alternativa. É assim que se limpa um papel criado por engano.
+
+A chave de um papel pode ser corrigida enquanto **ninguém detiver o papel** — os inquéritos que o utilizam acompanham a mudança de nome automaticamente, e renomear o único papel de um tipo não é problema, pois o papel sobrevive. Assim que alguém o detém, a chave fica bloqueada e o campo explica porquê. Os papéis criados antes desta convenção mantêm a chave que já tinham e continuam a funcionar; só é verificada uma chave nova ou alterada.
+
 #### Traduções
 
 Clique no botão **Traduzir** na barra de ferramentas do drawer do tipo para abrir o **Diálogo de Traduções**. Aqui você pode fornecer traduções para todos os rótulos do metamodelo em cada idioma suportado:
@@ -128,6 +157,10 @@ Tipos de relacionamento definem as conexões permitidas entre tipos de card. Cad
 | **Cardinalidade** | n:m (muitos-para-muitos) ou 1:n (um-para-muitos) |
 
 Clique em **+ Novo Tipo de Relacionamento** para criar um relacionamento, ou clique em um existente para editar seus rótulos e atributos.
+
+Os campos **Rótulo** e **Rótulo Inverso** são escritos no idioma que está a utilizar no momento — a legenda do campo indica qual (por exemplo, *Rótulo (Português)*). Renomear uma relação atualiza esse idioma em todos os locais onde o verbo aparece: a secção **Relações** de um card, as colunas de relação do inventário, os relatórios, os portais e os diagramas. Os restantes idiomas mantêm a sua própria redação até que os traduza.
+
+Use **Gerir traduções** no topo do separador Tipos de Relacionamento para traduzir os verbos de todas as relações para cada idioma ativado de uma só vez. Escolha um separador de idioma, escreva a redação ao lado do original em inglês e guarde — o contador em cada separador mostra quantos verbos faltam ainda nesse idioma. O inglês não aparece aqui porque é a redação da própria relação; um verbo não traduzido recorre a ela.
 
 ### Atributos de relação
 
@@ -219,7 +252,7 @@ O scanner de conformidade e o fluxo de promoção para Risco funcionam **mesmo s
 
 Para cada tipo de card, a seção **Layout** no painel do tipo controla como a página de detalhe do card é estruturada:
 
-- **Ordem das seções** — Arraste seções (Descrição, EOL, Ciclo de Vida, Hierarquia, Relacionamentos e seções personalizadas) para reordená-las
+- **Ordem das seções** — Arraste seções (Descrição, EOL, Ciclo de Vida, Hierarquia, Etiquetas, Relacionamentos e seções personalizadas) para reordená-las
 - **Visibilidade** — Oculte seções que não são relevantes para um tipo
 - **Expansão padrão** — Escolha se cada seção começa expandida ou recolhida
 - **Layout de colunas** — Defina 1 ou 2 colunas por seção personalizada

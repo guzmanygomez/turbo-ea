@@ -267,6 +267,46 @@ describe("validateMultiSheet", () => {
     });
   });
 
+  it("sources relations from a new card by pathKey, not its stale exported id", async () => {
+    // Re-importing an export into a FRESH instance: the Application row still
+    // carries the source instance's UUID in its `id` column, but no such card
+    // exists in the target, so the row is created. Its outgoing relation must
+    // source from the new card (pathKey → resolved to the new server id on
+    // apply), NOT the stale UUID — otherwise the relation insert fails with a
+    // foreign-key violation ("source_id ... is not present in table cards").
+    const targetDb = makeCard({
+      id: "22222222-2222-2222-2222-222222222222",
+      type: "ITComponent",
+      name: "DB",
+    });
+    postMock.mockImplementation(buildResolveRefsMock([targetDb]));
+    const staleId = "f4776e0b-b6ae-4619-b89a-4170b8dee616";
+    const wb = buildWorkbook(
+      [{ id: staleId, type: "Application", name: "NewApp", "rel:depends_on": "DB" }],
+      "Application",
+    );
+    const parsed = parseWorkbookSheets(wb, [APP_TYPE, ITC_TYPE]);
+    const report = await validateMultiSheet(
+      parsed,
+      [], // fresh instance — nothing exists locally
+      [APP_TYPE, ITC_TYPE],
+      [DEPENDS_ON_TYPE],
+      [],
+    );
+    expect(report.errors).toEqual([]);
+    expect(report.creates).toHaveLength(1);
+    expect(report.relationOps).toHaveLength(1);
+    expect(report.relationOps[0].sourceRef).toEqual({
+      kind: "pathKey",
+      pathKey: "Application|newapp",
+      type: "Application",
+    });
+    expect(report.relationOps[0].targetRef).toEqual({
+      kind: "id",
+      id: "22222222-2222-2222-2222-222222222222",
+    });
+  });
+
   it("flags an ambiguous relation target", async () => {
     const existing: Card[] = [
       makeCard({ id: "11111111-1111-1111-1111-111111111111", type: "Application", name: "ERP" }),
@@ -324,6 +364,47 @@ describe("validateMultiSheet", () => {
     // produces no upsert — only the removed Cache shows in the diff.
     expect(upserts).toHaveLength(0);
   });
+
+  it("resolves a same-batch hierarchical target referenced by bare name", async () => {
+    // Application is hierarchical. "CRM" is a child of "Platform", so its
+    // full path key is `Application|platform/crm`, but the relation cell
+    // references it by the bare name "CRM" (the exporter's default for
+    // uniquely-named cards). Same-batch matching must still find it — this
+    // is the new-card / empty-instance case that used to fail with
+    // "relation target doesn't match any card".
+    const APP_DEP: RelationType = {
+      ...DEPENDS_ON_TYPE,
+      key: "app_dep",
+      source_type_key: "Application",
+      target_type_key: "Application",
+    };
+    postMock.mockImplementation(buildResolveRefsMock([])); // empty DB
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet([
+        { type: "Application", name: "Platform" },
+        { type: "Application", name: "CRM", parent_path: "Platform" },
+        { type: "Application", name: "Portal", "rel:app_dep": "CRM" },
+      ]),
+      "Application",
+    );
+    const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
+    const parsed = parseWorkbookSheets(buf, [APP_TYPE, ITC_TYPE]);
+    const report = await validateMultiSheet(parsed, [], [APP_TYPE, ITC_TYPE], [APP_DEP], []);
+
+    expect(report.errors).toEqual([]);
+    expect(report.creates).toHaveLength(3);
+    const op = report.relationOps.find((o) => o.relationType === "app_dep");
+    expect(op).toBeTruthy();
+    // Target resolved to the child's full path key (via bare-name match),
+    // which the apply step hands the backend as a name+path ref.
+    expect(op!.targetRef).toEqual({
+      kind: "pathKey",
+      pathKey: "Application|platform/crm",
+      type: "Application",
+    });
+  });
 });
 
 describe("executeMultiSheetImport", () => {
@@ -336,10 +417,10 @@ describe("executeMultiSheetImport", () => {
     vi.clearAllMocks();
   });
 
-  it("uses bulk-create for new cards and relations/bulk for relation ops", async () => {
+  it("uses bulk-create for new cards then relations/bulk with materialised ids", async () => {
     postMock.mockImplementation(async (url: string, body: unknown) => {
       if (url === "/cards/bulk-create") {
-        const cards = (body as { cards: { row_index: number; name: string }[] }).cards;
+        const cards = (body as { cards: { row_index: number }[] }).cards;
         return {
           results: cards.map((c) => ({
             row_index: c.row_index,
@@ -395,11 +476,87 @@ describe("executeMultiSheetImport", () => {
     expect(result.created).toBe(1);
     expect(result.relationsUpserted).toBe(1);
     expect(result.failed).toBe(0);
-    // The pathKey source ref must have been materialised into the new uuid.
+    // Cards commit first; the pathKey source ref is materialised into the
+    // server-assigned uuid before the relations/bulk request.
     const bulkRelCall = postMock.mock.calls.find((c) => c[0] === "/relations/bulk");
     expect(bulkRelCall).toBeTruthy();
     const operations = (bulkRelCall![1] as { operations: { source: { id?: string } }[] }).operations;
     expect(operations[0].source.id).toBe("new-2");
+  });
+});
+
+describe("multi-sheet row_index collision (#767)", () => {
+  const postMock = api.post as unknown as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    postMock.mockReset();
+  });
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("keeps every card when two sheets share per-sheet row numbers", async () => {
+    // Two card-type sheets, each with rows at Excel rows 2 and 3 — the exact
+    // shape (e.g. Application + Provider) that used to collide on `row_index`
+    // and silently drop the second sheet's cards.
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet([
+        { type: "Application", name: "App One" },
+        { type: "Application", name: "App Two" },
+      ]),
+      "Application",
+    );
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet([
+        { type: "ITComponent", name: "Comp One" },
+        { type: "ITComponent", name: "Comp Two" },
+      ]),
+      "IT Component",
+    );
+    const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
+
+    const parsed = parseWorkbookSheets(buf, [APP_TYPE, ITC_TYPE]);
+    const report = await validateMultiSheet(parsed, [], [APP_TYPE, ITC_TYPE], [], []);
+
+    expect(report.errors).toEqual([]);
+    // All four cards survive the per-sheet → merged flattening (previously
+    // the two "row 2" / "row 3" collisions dropped a card each).
+    expect(report.creates).toHaveLength(4);
+    // Each merged row carries a workbook-wide unique wireRow...
+    const wireRows = report.creates.map((c) => c.wireRow);
+    expect(new Set(wireRows).size).toBe(4);
+    // ...while the per-sheet display row still repeats across sheets.
+    expect(report.creates.map((c) => c.rowIndex).sort()).toEqual([2, 2, 3, 3]);
+
+    // Capture the wire row_index values bulk-create actually receives.
+    const seenRowIndices: number[] = [];
+    postMock.mockImplementation(async (url: string, body: unknown) => {
+      if (url === "/cards/bulk-create") {
+        const cards = (body as { cards: { row_index: number }[] }).cards;
+        for (const c of cards) seenRowIndices.push(c.row_index);
+        return {
+          results: cards.map((c) => ({
+            row_index: c.row_index,
+            status: "created",
+            id: `new-${c.row_index}`,
+          })),
+          created: cards.length,
+          failed: 0,
+        };
+      }
+      return {};
+    });
+
+    const result = await executeMultiSheetImport(report);
+    expect(result.created).toBe(4);
+    expect(result.failed).toBe(0);
+    // The wire row_index values sent to the server are unique — no collision,
+    // so the backend's duplicate-index guard is never tripped.
+    expect(seenRowIndices).toHaveLength(4);
+    expect(new Set(seenRowIndices).size).toBe(4);
   });
 });
 
@@ -437,7 +594,7 @@ describe("buildExportWorkbook", () => {
       name: "DB",
     });
     getMock.mockImplementation(async (url: string): Promise<unknown> => {
-      if (url === "/relations") {
+      if (url.startsWith("/relations?")) {
         return [
           {
             id: "rel1",
@@ -476,7 +633,7 @@ describe("buildExportWorkbook", () => {
       name: "ERP",
     });
     getMock.mockImplementation(async (url: string): Promise<unknown> => {
-      if (url === "/relations") {
+      if (url.startsWith("/relations?")) {
         return [
           {
             id: "rel1",
@@ -508,6 +665,94 @@ describe("buildExportWorkbook", () => {
     expect(rows[0]["rel:depends_on"]).toBe("DB");
   });
 
+  it("scopes the relations request to the exported cards instead of fetching every relation", async () => {
+    // Regression guard: this used to be a bare `GET /relations`, pulling the
+    // whole instance and filtering client-side.
+    const app: Card = makeCard({
+      id: "11111111-1111-1111-1111-111111111111",
+      type: "Application",
+      name: "ERP",
+    });
+    const relationUrls: string[] = [];
+    getMock.mockImplementation(async (url: string): Promise<unknown> => {
+      if (url.startsWith("/relations")) {
+        relationUrls.push(url);
+        return [];
+      }
+      if (url.startsWith("/cards?ids=")) return { items: [] };
+      return [];
+    });
+
+    await buildExportWorkbook([app], APP_TYPE, [APP_TYPE, ITC_TYPE], [DEPENDS_ON_TYPE]);
+
+    expect(relationUrls).toHaveLength(1);
+    expect(relationUrls[0]).toContain("card_ids=");
+    expect(relationUrls[0]).toContain(app.id);
+    // Never the unfiltered form.
+    expect(relationUrls).not.toContain("/relations");
+  });
+
+  it("aborts the export when a relations chunk fails, rather than shipping a partial one", async () => {
+    // Half the relations is worse than none: the workbook would look complete
+    // while quietly missing edges. Same all-or-nothing contract the previous
+    // single-request implementation had.
+    const app: Card = makeCard({
+      id: "11111111-1111-1111-1111-111111111111",
+      type: "Application",
+      name: "ERP",
+    });
+    getMock.mockImplementation(async (url: string): Promise<unknown> => {
+      if (url.startsWith("/relations")) throw new Error("network blip");
+      return [];
+    });
+
+    await expect(
+      buildExportWorkbook([app], APP_TYPE, [APP_TYPE, ITC_TYPE], [DEPENDS_ON_TYPE]),
+    ).rejects.toThrow("network blip");
+  });
+
+  it("dedups a relation returned by two card_ids chunks", async () => {
+    // `card_ids` matches source OR target, so an edge whose endpoints land in
+    // different chunks comes back twice. Without id-dedup the exported cell
+    // would repeat the target name.
+    const app: Card = makeCard({
+      id: "11111111-1111-1111-1111-111111111111",
+      type: "Application",
+      name: "ERP",
+    });
+    const other: Card = makeCard({
+      id: "33333333-3333-3333-3333-333333333333",
+      type: "Application",
+      name: "CRM",
+    });
+    const APP_TO_APP: RelationType = { ...DEPENDS_ON_TYPE, target_type_key: "Application" };
+    const duplicated = {
+      id: "shared-rel",
+      type: "depends_on",
+      source_id: app.id,
+      target_id: other.id,
+      source: { id: app.id, type: app.type, name: app.name },
+      target: { id: other.id, type: other.type, name: other.name },
+    };
+    getMock.mockImplementation(async (url: string): Promise<unknown> => {
+      // Both cards fit in one chunk here; returning the row twice simulates
+      // the cross-chunk overlap in a single response the same way.
+      if (url.startsWith("/relations")) return [duplicated, { ...duplicated }];
+      if (url.startsWith("/cards?ids=")) return { items: [other] };
+      return [];
+    });
+
+    const wb = await buildExportWorkbook(
+      [app, other],
+      APP_TYPE,
+      [APP_TYPE, ITC_TYPE],
+      [APP_TO_APP],
+    );
+    const rows = rowsOf(wb, APP_TYPE.label);
+    const erp = rows.find((r) => r.name === "ERP")!;
+    expect(erp["rel:depends_on"]).toBe("CRM");
+  });
+
   it("separates multiple targets with semicolons, so comma-bearing names survive", async () => {
     // The whole reason for `;` over `,`: card names commonly contain commas
     // ("Acme, Inc."). Emitting them comma-separated would silently re-parse
@@ -528,7 +773,7 @@ describe("buildExportWorkbook", () => {
       name: "DB",
     });
     getMock.mockImplementation(async (url: string): Promise<unknown> => {
-      if (url === "/relations") {
+      if (url.startsWith("/relations?")) {
         return [
           {
             id: "r1",
@@ -647,7 +892,7 @@ describe("buildExportWorkbook", () => {
       name: "SAP S/4HANA",
     });
     getMock.mockImplementation(async (url: string): Promise<unknown> => {
-      if (url === "/relations") {
+      if (url.startsWith("/relations?")) {
         return [
           {
             id: "rdep",
@@ -789,7 +1034,7 @@ describe("buildExportWorkbook", () => {
       ],
     };
     getMock.mockImplementation(async (url: string): Promise<unknown> => {
-      if (url === "/relations") {
+      if (url.startsWith("/relations?")) {
         return [
           {
             id: "r1",

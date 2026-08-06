@@ -35,6 +35,10 @@ Beim Wechsel des Kartentyps werden die Auswahl für Gruppierung, Färbung und Fi
 
 Wenn die Beziehungen einer Karte einen «Typ»-Wert tragen — etwa den **Verwendungstyp** (Eigentümer / Benutzer / Stakeholder) bei Beziehungen Organisation→Anwendung oder den **Unterstützungstyp** bei Beziehungen Anwendung→Geschäftsfähigkeit — können Sie die Karten danach einfärben und filtern. **Gruppieren Sie den Bericht nach dem verbundenen Kartentyp**, um sie zu nutzen (z. B. *Gruppieren nach → Organisation*, um den *Verwendungstyp* freizuschalten): Der Untertyp erscheint dann unter der Gruppe **Beziehungs-Untertypen** in der Auswahl *Einfärben nach* sowie als eigene Filterzeile. Da jede Karte unter einer verbundenen Karte angezeigt wird, wird sie nach *dieser* Beziehung eingefärbt — eine Anwendung, die *Benutzer* einer Organisation ist, erscheint dort als Benutzer, auch wenn sie einer anderen gehört.
 
+### Verschachtelte Gruppen
+
+Beim Gruppieren nach einem verknüpften Kartentyp mit Hierarchie (z. B. Geschäftsfähigkeit oder Organisation) erscheint neben der Auswahl *Gruppieren nach* ein Schalter **Verschachtelte Gruppen**. Aktivieren Sie ihn, um die Gruppen als ineinander verschachtelte Boxen entlang der Eltern-Kind-Hierarchie des verknüpften Typs darzustellen — wie in der Fähigkeitskarte. Die Auswahl **Anzeigetiefe** steuert, wie viele Ebenen aufgeklappt werden: Jede Karte erscheint unter ihrer tiefsten sichtbaren Gruppe, und Gruppen unterhalb der Tiefengrenze rollen ihre Karten in den nächsten sichtbaren Vorfahren hoch. Zweige ohne Karten werden ausgeblendet.
+
 ## Fähigkeitskarte
 
 ![Geschäftsfähigkeitskarte](../assets/img/de/11_faehigkeiten_karte.png)
@@ -70,7 +74,7 @@ Der **Abhängigkeitsbericht** visualisiert **Verbindungen zwischen Komponenten**
 
 ### Layered Dependency View (geschichtete Abhängigkeitsansicht)
 
-![Layered Dependency View](../assets/img/en/13b_dependencies_c4.png)
+![Layered Dependency View](../assets/img/de/13b_abhaengigkeiten_c4.png)
 
 Wechseln Sie über die Ansichtsmodus-Schaltflächen in der Symbolleiste zur **Layered Dependency View**. Dies ist die hauseigene Notation von Turbo EA, um Abhängigkeiten zwischen Karten über die vier EA-Ebenen hinweg darzustellen — inspiriert vom Schichtenprinzip von ArchiMate und der „Good Defaults"-Philosophie des C4-Modells, aber von beiden zu unterscheiden. Dieselbe Ansicht wird auf der Kartendetailseite (zeigt die unmittelbare Abhängigkeits-Nachbarschaft der Karte) und im [TurboLens-Architect](turbolens.md#architecture-ai)-Wizard wiederverwendet, sodass Abhängigkeiten überall gleich aussehen.
 
@@ -152,6 +156,47 @@ Der **Matrixbericht** erstellt ein **Kreuzreferenzraster** zwischen zwei Kartent
 - **Zellen** — Zeigen an, ob eine Beziehung besteht (und wie viele)
 
 Dies ist nützlich zur Identifizierung von Abdeckungslücken (Fähigkeiten ohne unterstützende Anwendungen) oder Redundanzen (Fähigkeiten, die von zu vielen Anwendungen unterstützt werden).
+
+Verwenden Sie den Schalter **Nicht verknüpfte Karten ausblenden**, um Zeilen und Spalten für Karten ohne Beziehungen auszublenden, sodass nur Karten angezeigt werden, die an mindestens einer Beziehung beteiligt sind. Die vollständige Ansicht mit allen Karten bleibt die Standardeinstellung.
+
+### Was eine Zelle zeigt
+
+Die Steuerung **Zellenanzeige** bietet vier Optionen:
+
+- **Vorhanden (Punkt)** — ein Punkt überall dort, wo eine Beziehung besteht.
+- **Anzahl (Heatmap)** — wie viele Beziehungen es gibt, nach Dichte eingefärbt.
+- **Werte (Kürzel)** — ein farbcodierter Buchstabe je Beziehungswert, mit einer Legende über dem Raster. Am besten für große Matrizen.
+- **Werte (Beschriftungen)** — die Wertenamen vollständig. Die Spalten werden breiter, daher eignet sich das für kleinere Matrizen.
+
+Buchstaben und Namen stammen aus den Attributen, die Ihre Beziehungstypen deklarieren, in Ihrer eigenen Sprache. Eine CRUD-Beziehung liest sich als `C R U D`; eine Eigentumsbeziehung zeigt ihre eigenen Werte. Fügen Sie im [Metamodell](../admin/metamodel.md) einem Beziehungstyp einen Wert hinzu, erscheint er hier ohne weitere Einrichtung. Eine eingeklappte Gruppenzelle zeigt immer eine Anzahl, da sie viele verschiedene Werte umfassen kann — klappen Sie eine Ebene aus, um sie zu sehen.
+
+Eine Karte mit untergeordneten Elementen kann auch eigene Beziehungen haben. In diesem Fall erhält sie direkt unter ihrer Gruppenüberschrift eine eigene Zeile (bzw. Spalte) mit der Beschriftung **(selbst)**, damit diese Beziehungen einen Platz haben und nicht zwischen der übergeordneten Karte und ihren untergeordneten Elementen verloren gehen. Klappen Sie die Ebene ein, werden sie zusammen mit denen der untergeordneten Elemente in der Gruppenzelle gezählt.
+
+### Nach Beziehung filtern
+
+Die Filterleiste über dem Raster grenzt die Matrix auf die Beziehungen ein, die Sie interessieren:
+
+- **Beziehungstyp** — wenn die beiden Kartentypen in beide Richtungen verbunden sind.
+- **Richtung** — ob die Zeilenkarte Quelle oder Ziel der Beziehung ist.
+- **Werte** — ein Filter je Attribut, das die Beziehungstypen deklarieren, einschließlich «(leer)» für Beziehungen, bei denen der Wert nie gesetzt wurde.
+
+Beim Filtern leeren sich die Zellen der Karten, die nicht mehr passen; der Schalter **Nicht passende Karten ausblenden** lässt dann nur die passenden übrig. Einige Beispiele:
+
+- Anwendung × Datenobjekt, gefiltert auf *Anlegen* — welche Anwendungen das führende System für ein Datenobjekt sind.
+- Anwendung × Schnittstelle, nach Richtung gefiltert — wer eine Schnittstelle bereitstellt und wer sie konsumiert.
+- Organisation × Anwendung, gefiltert auf *Eigentümer* — die Eigentümerlandkarte, ohne dass die Nutzer sie überladen.
+
+### Abdeckungslücken finden
+
+Zwei Kacheln zählen die Karten je Achse, die überhaupt keine Beziehung haben. **Nur Lücken anzeigen** reduziert das Raster auf genau diese — die Fähigkeiten, die niemand unterstützt, die Datenobjekte, die niemand pflegt.
+
+### Sich in einer großen Matrix zurechtfinden
+
+**Zeile suchen** und **Spalte suchen** filtern die Achsen nach Namen; ein übergeordnetes Element bleibt sichtbar, wenn eines seiner untergeordneten Elemente passt. Die Tauschschaltfläche in der Titelleiste vertauscht die beiden Achsen.
+
+### Exportieren
+
+Der Excel-Export erzeugt zwei Blätter: das Raster wie auf dem Bildschirm und eine Zeile je Beziehung mit ihren Werten in Spalten — das Blatt zum Pivotieren. Der PowerPoint-Export erfasst das Bild.
 
 ## Datenqualitätsbericht
 

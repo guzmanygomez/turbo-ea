@@ -9,7 +9,6 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
-from app.api.v1.auth import _get_sso_config
 from app.core.security import hash_password
 from app.database import get_db
 from app.models.role import Role
@@ -17,6 +16,7 @@ from app.models.sso_invitation import SsoInvitation
 from app.models.user import DEFAULT_NOTIFICATION_PREFERENCES, DEFAULT_UI_PREFERENCES, User
 from app.models.user_group import UserGroupMember
 from app.services.permission_service import PermissionService
+from app.services.sso_service import get_sso_config
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -100,6 +100,27 @@ def _user_response(u: User, group_ids: list[str] | None = None) -> dict:
     }
 
 
+def _user_response_lite(u: User) -> dict:
+    """Minimal user payload for non-admin callers.
+
+    `GET /users` feeds owner / assignee / stakeholder / signer pickers that
+    every authenticated user needs, so the endpoint can't be locked behind
+    `admin.users`. Instead we shape the response to the caller: non-admins get
+    only what those pickers consume (`id`, `display_name`, `email`,
+    `is_active`) and are denied the account-security / attacker-surface fields
+    (`role`, `auth_provider`, `has_password`, `pending_setup`, `last_login`,
+    `created_at`, `locale`, `ui_preferences`) that only the admin Users screen
+    reads. `email` stays: pickers display and search by it, and it is already
+    surfaced to non-admins via the stakeholders endpoint.
+    """
+    return {
+        "id": str(u.id),
+        "display_name": u.display_name,
+        "email": u.email,
+        "is_active": u.is_active,
+    }
+
+
 def _invitation_response(inv: SsoInvitation) -> dict:
     return {
         "id": str(inv.id),
@@ -133,6 +154,13 @@ async def list_users(
         stmt = stmt.where(User.is_active.is_(True))
     result = await db.execute(stmt)
     users = result.scalars().all()
+
+    # Shape the payload to the caller. Admins (Users admin screen) get the full
+    # record; everyone else gets the lite payload the pickers need — never the
+    # PII / attacker-surface metadata.
+    is_admin = await PermissionService.has_app_permission(db, user, "admin.users")
+    if not is_admin:
+        return [_user_response_lite(u) for u in users]
 
     # Batch-load group memberships for all users
     gm_result = await db.execute(select(UserGroupMember))
@@ -197,7 +225,7 @@ async def resend_invitation_by_invitation(
     user_result = await db.execute(select(User).where(User.email == inv.email))
     matching_user = user_result.scalar_one_or_none()
 
-    sso_cfg = await _get_sso_config(db)
+    sso_cfg = await get_sso_config(db)
     sso_enabled = sso_cfg.get("enabled", False)
     title, message, link = _build_invite_email(
         app_title=_get_app_title(),
@@ -211,7 +239,11 @@ async def resend_invitation_by_invitation(
         import logging
 
         logging.getLogger(__name__).exception("Failed to resend invitation email to %s", inv.email)
-        raise HTTPException(502, f"Failed to send invitation email: {exc}") from exc
+        raise HTTPException(
+            502,
+            "Failed to send invitation email. Check the email settings and "
+            "server logs for details.",
+        ) from exc
 
     if not sent:
         raise HTTPException(
@@ -448,6 +480,14 @@ async def get_user(
     u = result.scalar_one_or_none()
     if not u:
         raise HTTPException(404, "User not found")
+
+    # Full record only for admins or the user reading their own profile;
+    # everyone else gets the lite payload (mirrors list_users).
+    is_admin = await PermissionService.has_app_permission(db, current_user, "admin.users")
+    is_self = str(current_user.id) == user_id
+    if not (is_admin or is_self):
+        return _user_response_lite(u)
+
     gm_result = await db.execute(
         select(UserGroupMember.group_id).where(UserGroupMember.user_id == u.id)
     )
@@ -503,7 +543,7 @@ async def create_user(
     # explicit value (e.g. the import flow forwarding the `auth_provider`
     # column from the sheet), honour it; otherwise fall back to the legacy
     # heuristic (local iff a password is supplied).
-    sso_cfg = await _get_sso_config(db)
+    sso_cfg = await get_sso_config(db)
     sso_enabled = sso_cfg.get("enabled", False)
 
     if body.auth_provider == "local":
@@ -608,13 +648,14 @@ async def create_user(
                     "be sent. The account was created — configure an email "
                     "sending method in admin settings and re-send manually if needed."
                 )
-        except Exception as exc:
+        except Exception:
             import logging
 
             logging.getLogger(__name__).exception("Failed to send invitation email to %s", email)
             response["email_sent"] = False
             response["email_error"] = (
-                f"The account was created, but the invitation email could not be sent: {exc}"
+                "The account was created, but the invitation email could not be "
+                "sent. Check the email settings and server logs for details."
             )
 
     return response

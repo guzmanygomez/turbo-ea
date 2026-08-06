@@ -35,6 +35,10 @@ Alterar o tipo de cartão reinicia as seleções de agrupamento, cor e filtros (
 
 Quando as relações de um cartão têm um valor de «tipo» — por exemplo o **tipo de utilização** (Proprietário / Utilizador / Parte interessada) nas relações Organização→Aplicação, ou o **tipo de suporte** nas relações Aplicação→Capacidade de negócio — pode colorir os cartões por esse valor e filtrar por ele. **Agrupe o relatório pelo tipo de cartão relacionado** para os usar (por ex. *Agrupar por → Organização* para ativar o *tipo de utilização*): o subtipo aparece então sob o grupo **Subtipos de relação** na lista *Colorir por* e como a sua própria linha de filtros. Como cada cartão é apresentado sob um cartão relacionado, é colorido segundo *essa* relação — uma aplicação que é *Utilizador* de uma organização aparece como Utilizador aí, mesmo que pertença a outra.
 
+### Grupos aninhados
+
+Ao agrupar por um tipo de cartão relacionado que suporta hierarquia (como Capacidade de negócio ou Organização), um interruptor **Grupos aninhados** aparece ao lado do seletor *Agrupar por*. Ative-o para exibir os grupos como caixas aninhadas seguindo a hierarquia pai/filho do tipo relacionado — como no Mapa de Capacidades. O seletor **Profundidade de exibição** controla quantos níveis são expandidos: cada cartão aparece sob o seu grupo visível mais profundo, e os grupos abaixo do limite de profundidade elevam os seus cartões ao ancestral visível mais próximo. Ramos sem cartões são ocultados.
+
 ## Mapa de Capacidades
 
 ![Mapa de Capacidades de Negócio](../assets/img/pt/11_mapa_capacidades.png)
@@ -70,7 +74,7 @@ O **Relatório de Dependências** visualiza **conexões entre componentes** como
 
 ### Layered Dependency View (vista de dependências em camadas)
 
-![Layered Dependency View](../assets/img/en/13b_dependencies_c4.png)
+![Layered Dependency View](../assets/img/pt/13b_dependencias_c4.png)
 
 Alterne para a **Layered Dependency View** usando os botões de modo de visualização na barra de ferramentas. É a notação própria do Turbo EA para mostrar dependências entre cartões nas quatro camadas EA — inspirada no princípio de estratificação do ArchiMate e na filosofia de «bons padrões» do modelo C4, mas distinta de ambos. A mesma vista é reutilizada na página de detalhes do cartão (mostrando a vizinhança imediata de dependências do cartão) e no assistente [TurboLens Architect](turbolens.md#architecture-ai), de modo que as dependências aparecem da mesma forma em toda parte.
 
@@ -152,6 +156,47 @@ O **Relatório de Matriz** cria uma **grade de referência cruzada** entre dois 
 - **Células** — Indicam se um relacionamento existe (e quantos)
 
 Isso é útil para identificar lacunas de cobertura (capacidades sem aplicações de suporte) ou redundâncias (capacidades suportadas por muitas aplicações).
+
+Utilize o botão **Ocultar cartões sem relações** para ocultar linhas e colunas de cards que não têm relações, mantendo apenas os cards que participam em pelo menos uma relação. A visualização completa que mostra todos os cards continua a ser o comportamento predefinido.
+
+### O que cada célula mostra
+
+O controlo **Exibição da célula** oferece quatro opções:
+
+- **Existe (ponto)** — um ponto onde exista uma relação.
+- **Contagem (mapa de calor)** — quantas relações existem, sombreadas conforme a densidade.
+- **Valores (códigos)** — uma letra colorida por cada valor da relação, com uma legenda acima da grelha. Ideal para uma matriz grande.
+- **Valores (rótulos)** — os nomes dos valores por extenso. As colunas alargam-se, pelo que se adequa a uma matriz mais pequena.
+
+As letras e os nomes vêm dos atributos que os seus tipos de relação declaram, no seu próprio idioma. Uma relação CRUD lê-se `C R U D`; uma relação de propriedade mostra os seus próprios valores. Adicione um valor a um tipo de relação no [metamodelo](../admin/metamodel.md) e ele aparece aqui sem mais configuração. Uma célula de grupo recolhido mostra sempre uma contagem, porque pode abranger muitos valores diferentes — expanda um nível para os ver.
+
+Um card com filhos na hierarquia pode também ter relações próprias. Quando tem, recebe uma linha (ou coluna) só sua, com o rótulo **(ele próprio)**, logo abaixo do seu cabeçalho de grupo, para que essas relações tenham onde aparecer em vez de se perderem entre o pai e os filhos. Ao recolher o nível, passam a ser contadas na célula do grupo juntamente com as dos filhos.
+
+### Filtrar por relação
+
+A barra de filtros acima da grelha restringe a matriz às relações que lhe interessam:
+
+- **Tipo de relação** — quando os dois tipos de card estão ligados em ambos os sentidos.
+- **Direção** — se o card da linha é a origem ou o destino da relação.
+- **Valores** — um filtro por cada atributo declarado pelos tipos de relação, incluindo «(vazio)» para relações cujo valor nunca foi definido.
+
+Ao filtrar, as células dos cards que já não correspondem ficam vazias, pelo que ativar **Ocultar cartões não correspondentes** deixa apenas os que correspondem. Alguns exemplos:
+
+- Aplicação × Objeto de dados, filtrado por *Criar* — que aplicações são o sistema de referência de cada objeto de dados.
+- Aplicação × Interface, filtrado por direção — quem publica uma interface e quem a consome.
+- Organização × Aplicação, filtrado por *Proprietário* — o mapa de propriedade, sem os utilizadores a sobrecarregá-lo.
+
+### Encontrar lacunas de cobertura
+
+Dois mosaicos contam os cards de cada eixo que não têm qualquer relação. **Mostrar apenas lacunas** reduz a grelha exatamente a esses — as capacidades que ninguém suporta, os objetos de dados que ninguém mantém.
+
+### Orientar-se numa matriz grande
+
+**Procurar linha** e **Procurar coluna** filtram os eixos por nome; um elemento pai permanece visível quando um dos seus filhos corresponde. O botão de troca na barra de título inverte os dois eixos.
+
+### Exportar
+
+A exportação para Excel produz duas folhas: a grelha tal como aparece no ecrã e uma linha por relação com os seus valores distribuídos por colunas — a folha sobre a qual construir uma tabela dinâmica. A exportação para PowerPoint capta a imagem.
 
 ## Relatório de Qualidade dos Dados
 

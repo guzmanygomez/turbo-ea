@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
+import { useNavigate } from "react-router";
 import Box from "@mui/material/Box";
 import MuiCard from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
@@ -31,6 +31,7 @@ import {
   TodosTab,
   StakeholdersTab,
   ResourcesTab,
+  AdrsTab,
   HistoryTab,
   RisksTab,
   ComplianceTab,
@@ -38,8 +39,20 @@ import {
 } from "@/features/cards/sections";
 import { useAuthContext } from "@/hooks/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
+import { hasPermission } from "@/components/RequirePermission";
+import {
+  ExtensionBoundary,
+  ExtensionSlot,
+  useExtensionUI,
+  useExtensionFieldVisibilityProviders,
+} from "@/lib/extensionHost";
 import SoAWTab from "@/features/cards/sections/SoAWTab";
+import {
+  makeSectionConfigReader,
+  sectionDefaultExpanded,
+} from "@/features/cards/sectionConfig";
 import type {
+  ArchitectureDecision,
   Card,
   CardEffectivePermissions,
   Risk,
@@ -68,6 +81,8 @@ interface Props {
   onAiSuggest?: () => void;
   /** Whether an AI suggestion is currently in flight (disables the button) */
   aiBusy?: boolean;
+  /** Notified when any editable section has unsaved changes (for a leave guard) */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 export default function CardDetailContent({
@@ -83,6 +98,7 @@ export default function CardDetailContent({
   showLdvSection = true,
   onAiSuggest,
   aiBusy = false,
+  onDirtyChange,
 }: Props) {
   const { t } = useTranslation("cards");
   const navigate = useNavigate();
@@ -145,6 +161,36 @@ export default function CardDetailContent({
   const showComplianceTab =
     grcEnabled && canViewCompliance && (complianceCount === null || complianceCount > 0);
 
+  // Card-scoped ADR count. Same `null = loading` convention as above, but ADRs
+  // are not GRC-gated so this lives in its own effect. Unlike Risks the tab
+  // also stays visible on an empty card for users who may link/create ADRs —
+  // otherwise there'd be no way to attach the first decision to a card.
+  const [adrCount, setAdrCount] = useState<number | null>(null);
+  const canViewAdr = can("adr.view");
+
+  useEffect(() => {
+    if (!canViewAdr) {
+      setAdrCount(0);
+      return;
+    }
+    let cancelled = false;
+    setAdrCount(null);
+    api
+      .get<ArchitectureDecision[]>(`/adr/by-card/${card.id}`)
+      .then((rows) => {
+        if (!cancelled) setAdrCount(rows.length);
+      })
+      .catch(() => {
+        if (!cancelled) setAdrCount(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [card.id, canViewAdr]);
+
+  const showAdrsTab =
+    canViewAdr && (adrCount === null || adrCount > 0 || perms.can_manage_adr_links);
+
   const [tab, setTab] = useState(initialTab);
   const [relRefresh, setRelRefresh] = useState(0);
 
@@ -171,17 +217,38 @@ export default function CardDetailContent({
     calcFieldKeys = [...new Set([...calcFieldKeys, ...autoFieldKeys])];
   }
 
-  // Section config
-  const sc = typeConfig?.section_config || {};
-  const secExpanded = (key: string, fallback = true) =>
-    sc[key]?.defaultExpanded !== false ? fallback : false;
-  const secHidden = (key: string) => !!sc[key]?.hidden;
+  // Extensions may hide specific card fields at render time (display-only,
+  // ungated, never deletes stored values). Each registered provider renders as
+  // a headless slot below and reports its own hidden-key set, keyed by its
+  // extension. Stable provider list → each provider's own hooks keep a fixed
+  // order across re-renders.
+  const fieldVisibilityProviders = useExtensionFieldVisibilityProviders();
+  const [extHiddenByKey, setExtHiddenByKey] = useState<Record<string, string[]>>({});
+  const reportHiddenFields = useCallback((extKey: string, keys: string[]) => {
+    setExtHiddenByKey((prev) => {
+      const cur = prev[extKey];
+      if (cur && cur.length === keys.length && cur.every((k, i) => k === keys[i])) {
+        return prev; // no change — avoid needless re-render
+      }
+      return { ...prev, [extKey]: keys };
+    });
+  }, []);
 
-  // Determine hidden fields based on card subtype
+  // Determine hidden fields: subtype hidden_fields ∪ every currently-registered
+  // extension provider's reported keys. Reports from an extension that is no
+  // longer registered are ignored (its slot is gone).
   const hiddenFieldKeys: Set<string> = (() => {
-    if (!card.subtype || !typeConfig?.subtypes) return new Set<string>();
-    const st = typeConfig.subtypes.find((s) => s.key === card.subtype);
-    return new Set(st?.hidden_fields ?? []);
+    const set = new Set<string>();
+    if (card.subtype && typeConfig?.subtypes) {
+      const st = typeConfig.subtypes.find((s) => s.key === card.subtype);
+      for (const k of st?.hidden_fields ?? []) set.add(k);
+    }
+    const active = new Set(fieldVisibilityProviders.map((p) => p.extKey));
+    for (const [extKey, keys] of Object.entries(extHiddenByKey)) {
+      if (!active.has(extKey)) continue;
+      for (const k of keys) set.add(k);
+    }
+    return set;
   })();
   // Attributes augmented with standard card properties for rule evaluation
   const ruleAttributes: Record<string, unknown> = {
@@ -208,6 +275,14 @@ export default function CardDetailContent({
   const descExtraFields = (descExtraSection?.fields || []).filter(
     (f) => !hiddenFieldKeys.has(f.key),
   );
+
+  // Section config — see `sectionConfig.ts` for the explicit-boolean and
+  // legacy-key semantics this reader encapsulates.
+  const sc = typeConfig?.section_config || {};
+  const sectionCfg = makeSectionConfigReader(sc, customSections);
+  const secRaw = sectionCfg.raw;
+  const secExpanded = sectionCfg.expanded;
+  const secHidden = sectionCfg.hidden;
 
   // Build section order from config or default
   const sectionOrder = (() => {
@@ -254,9 +329,43 @@ export default function CardDetailContent({
     [card.id, onCardUpdate],
   );
 
+  // Track which sections have unsaved edits so the page can warn on navigation
+  // (#843). Each editable section reports its dirty state under a stable key;
+  // we bubble a single boolean up whenever the "any dirty" state flips.
+  // `onDirtyChange` is read through a ref so `registerDirty` (and the per-key
+  // callbacks derived from it) keep a stable identity and don't re-trigger each
+  // section's dirty-reporting effect on every render.
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  useEffect(() => {
+    onDirtyChangeRef.current = onDirtyChange;
+  }, [onDirtyChange]);
+  const dirtySectionsRef = useRef<Set<string>>(new Set());
+  const dirtyCbCacheRef = useRef<Map<string, (dirty: boolean) => void>>(
+    new Map(),
+  );
+  const registerDirty = useCallback((key: string, dirty: boolean) => {
+    const set = dirtySectionsRef.current;
+    const wasEmpty = set.size === 0;
+    if (dirty) set.add(key);
+    else set.delete(key);
+    const isEmpty = set.size === 0;
+    if (wasEmpty !== isEmpty) onDirtyChangeRef.current?.(!isEmpty);
+  }, []);
+  const dirtyCb = useCallback(
+    (key: string) => {
+      let cb = dirtyCbCacheRef.current.get(key);
+      if (!cb) {
+        cb = (dirty: boolean) => registerDirty(key, dirty);
+        dirtyCbCacheRef.current.set(key, cb);
+      }
+      return cb;
+    },
+    [registerDirty],
+  );
+
   const renderSection = (key: string) => {
     if (secHidden(key)) return null;
-    const exp = secExpanded(key, key === "relations" ? false : true);
+    const exp = secExpanded(key, sectionDefaultExpanded(key));
 
     if (key === "description") {
       return (
@@ -272,6 +381,7 @@ export default function CardDetailContent({
             currencyFmt={currencyFmt}
             onAiSuggest={onAiSuggest}
             aiBusy={aiBusy}
+            onDirtyChange={dirtyCb("description")}
           />
         </ErrorBoundary>
       );
@@ -279,10 +389,12 @@ export default function CardDetailContent({
     if (key === "eol") {
       return (
         <ErrorBoundary key={key} label="End of Life" inline>
+          {/* `undefined` keeps EolLinkSection's own default (expand only when a
+              product is linked); an explicit setting overrides it. */}
           <EolLinkSection
             card={card}
             onSave={handleUpdate}
-            initialExpanded={exp ? undefined : false}
+            initialExpanded={secRaw("eol")}
           />
         </ErrorBoundary>
       );
@@ -295,6 +407,7 @@ export default function CardDetailContent({
             onSave={handleUpdate}
             canEdit={perms.can_edit}
             initialExpanded={exp}
+            onDirtyChange={dirtyCb("lifecycle")}
           />
         </ErrorBoundary>
       );
@@ -377,6 +490,7 @@ export default function CardDetailContent({
             initialExpanded={exp}
             hiddenFieldKeys={hiddenFieldKeys}
             canViewCosts={perms.can_view_costs}
+            onDirtyChange={dirtyCb(key)}
           />
         </ErrorBoundary>
       );
@@ -397,14 +511,30 @@ export default function CardDetailContent({
   const todosIdx = 2 + extraOffset;
   const stakeholdersIdx = 3 + extraOffset;
   const resourcesIdx = 4 + extraOffset;
+  const adrsTabOffset = showAdrsTab ? 1 : 0;
+  const adrsIdx = showAdrsTab ? 5 + extraOffset : -1;
   const risksTabOffset = showRisksTab ? 1 : 0;
-  const risksIdx = showRisksTab ? 5 + extraOffset : -1;
+  const risksIdx = showRisksTab ? 5 + extraOffset + adrsTabOffset : -1;
   const complianceTabOffset = showComplianceTab ? 1 : 0;
-  const complianceIdx = showComplianceTab ? 5 + extraOffset + risksTabOffset : -1;
-  const historyIdx = 5 + extraOffset + risksTabOffset + complianceTabOffset;
+  const complianceIdx = showComplianceTab
+    ? 5 + extraOffset + adrsTabOffset + risksTabOffset
+    : -1;
+  const historyIdx =
+    5 + extraOffset + adrsTabOffset + risksTabOffset + complianceTabOffset;
   const ppmTabIdx = isPpm ? historyIdx + 1 : -1;
   // SoAW tab index = 1 when Initiative (no BPM); slots in right after Card.
   const soawTabIdx = isSoaw ? 1 + bpmOffset : -1;
+
+  // Extension-contributed tabs render at the very end of the strip,
+  // filtered by card type (appliesTo) and app-level permission.
+  const uiExtensions = useExtensionUI();
+  const extensionTabs = uiExtensions.flatMap(({ key, plugin }) =>
+    (plugin.cardTabs ?? [])
+      .filter((def) => !def.appliesTo || def.appliesTo.includes(card.type))
+      .filter((def) => !def.permission || hasPermission(user?.permissions, def.permission))
+      .map((def) => ({ extKey: key, def })),
+  );
+  const extensionTabBase = historyIdx + 1 + (isPpm ? 1 : 0);
 
   const { hasUpdates, noteVisit } = useCardTabActivity(card.id, user?.id);
 
@@ -417,6 +547,7 @@ export default function CardDetailContent({
     if (idx === todosIdx) return "todos";
     if (idx === stakeholdersIdx) return "stakeholders";
     if (idx === resourcesIdx) return "resources";
+    if (showAdrsTab && idx === adrsIdx) return "adrs";
     if (showRisksTab && idx === risksIdx) return "risks";
     if (showComplianceTab && idx === complianceIdx) return "compliance";
     if (idx === historyIdx) return "history";
@@ -435,7 +566,7 @@ export default function CardDetailContent({
     // tabKeyForIndex captures index offsets; re-running when any of them shift
     // keeps the active key in sync.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, card.id, isBpm, isSoaw, showRisksTab, showComplianceTab, noteVisit]);
+  }, [tab, card.id, isBpm, isSoaw, showAdrsTab, showRisksTab, showComplianceTab, noteVisit]);
 
   const renderTabLabel = (key: string, label: string) => {
     if (!hasUpdates(key)) return label;
@@ -454,6 +585,22 @@ export default function CardDetailContent({
 
   return (
     <>
+      {/* Headless extension field-visibility providers (render null). Stable
+          list + stable key per extension so each provider's hooks keep order.
+          Each runs inside ExtensionBoundary so a crash can't blank the card. */}
+      {fieldVisibilityProviders.map(({ extKey, provider: Provider }) => (
+        <ExtensionBoundary key={`fv-${extKey}`} extensionKey={extKey}>
+          <Provider card={card} report={reportHiddenFields} />
+        </ExtensionBoundary>
+      ))}
+
+      {/* Generic extension slot (SDK 1.12): any extension can render header
+          content on any card without a dedicated SDK extension point. */}
+      <ExtensionSlot
+        name="card.detail.header"
+        context={{ cardId: card.id, cardType: card.type }}
+      />
+
       {beforeTabs}
 
       <Tabs
@@ -478,12 +625,16 @@ export default function CardDetailContent({
         <Tab label={renderTabLabel("todos", t("tabs.todos"))} />
         <Tab label={renderTabLabel("stakeholders", t("tabs.stakeholders"))} />
         <Tab label={renderTabLabel("resources", t("tabs.resources"))} />
+        {showAdrsTab && <Tab label={renderTabLabel("adrs", t("tabs.adrs"))} />}
         {showRisksTab && <Tab label={renderTabLabel("risks", t("tabs.risks"))} />}
         {showComplianceTab && (
           <Tab label={renderTabLabel("compliance", t("tabs.compliance"))} />
         )}
         <Tab label={renderTabLabel("history", t("tabs.history"))} />
         {isPpm && <Tab label={renderTabLabel("ppm", t("tabs.ppm"))} />}
+        {extensionTabs.map(({ extKey, def }) => (
+          <Tab key={`ext:${extKey}:${def.id}`} label={def.label} />
+        ))}
       </Tabs>
 
       {tab === 0 && (
@@ -570,11 +721,23 @@ export default function CardDetailContent({
             <CardContent>
               <ResourcesTab
                 fsId={card.id}
-                cardName={card.name}
                 cardType={card.type}
                 canManageDocuments={perms.can_manage_documents}
-                canManageAdrLinks={perms.can_manage_adr_links}
                 canManageDiagramLinks={perms.can_manage_diagram_links}
+              />
+            </CardContent>
+          </MuiCard>
+        </ErrorBoundary>
+      )}
+      {showAdrsTab && tab === adrsIdx && (
+        <ErrorBoundary label="ADRs">
+          <MuiCard>
+            <CardContent>
+              <AdrsTab
+                cardId={card.id}
+                cardName={card.name}
+                cardType={card.type}
+                canManageAdrLinks={perms.can_manage_adr_links}
               />
             </CardContent>
           </MuiCard>
@@ -606,6 +769,17 @@ export default function CardDetailContent({
             </CardContent>
           </MuiCard>
         </ErrorBoundary>
+      )}
+      {extensionTabs.map(({ extKey, def }, i) =>
+        tab === extensionTabBase + i ? (
+          <ExtensionBoundary key={`ext:${extKey}:${def.id}`} extensionKey={extKey}>
+            <MuiCard>
+              <CardContent>
+                <def.component cardId={card.id} cardType={card.type} />
+              </CardContent>
+            </MuiCard>
+          </ExtensionBoundary>
+        ) : null,
       )}
     </>
   );

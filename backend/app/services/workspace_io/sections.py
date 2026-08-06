@@ -31,7 +31,7 @@ from app.models.ppm_task_comment import PpmTaskComment
 from app.models.ppm_wbs import PpmWbs
 from app.models.process_assessment import ProcessAssessment
 from app.models.process_diagram import ProcessDiagram
-from app.models.process_element import ProcessElement
+from app.models.process_element import ProcessElement, ProcessElementOrganization
 from app.models.process_flow_version import ProcessFlowVersion
 from app.models.risk import Risk, RiskCard
 from app.models.risk_mitigation_task import RiskMitigationTask, RiskMitigationTaskOccurrence
@@ -88,6 +88,18 @@ ENTITY_SECTIONS: tuple[EntitySection, ...] = (
         # the thumbnail / view / card_refs keys stay inline as JSON.
         json_asset_columns=(("data", "xml", "drawio"),),
         filename_column="name",
+        # Publication state never travels. A diagram imported into another
+        # instance lands unpublished with no slug, so cloning a workspace can
+        # never silently re-expose a public link on the target — the operator
+        # there has to make that decision themselves. Excluded rather than
+        # exported-and-reset because `public_slug` is unique: carrying it would
+        # also collide the moment two instances shared a bundle.
+        exclude_columns=(
+            "is_published",
+            "public_slug",
+            "access_mode",
+            "allowed_email_domains",
+        ),
     ),
     # Diagram groups (shared) + per-user favorites. After Diagrams so the
     # favorites' diagram_id (an intra-module FK, preserved verbatim) resolves.
@@ -105,6 +117,13 @@ ENTITY_SECTIONS: tuple[EntitySection, ...] = (
         "ProcessElements",
         ProcessElement,
         card_fk_columns=("process_id", "application_id", "data_object_id", "it_component_id"),
+    ),
+    # After ProcessElements so the junction's element_id (an intra-module FK,
+    # preserved verbatim) resolves; organization_id is remapped by card ref.
+    EntitySection(
+        "ProcessElementOrgs",
+        ProcessElementOrganization,
+        card_fk_columns=("organization_id",),
     ),
     EntitySection(
         "ProcessFlowVersions",

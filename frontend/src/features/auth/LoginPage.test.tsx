@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import LoginPage from "./LoginPage";
 import { _resetLoginBrandingCache, invalidateLoginBranding } from "@/hooks/useLoginBranding";
 
@@ -166,6 +166,50 @@ describe("LoginPage", () => {
     });
     // Shows the divider text
     expect(screen.getByText(/or sign in with email/i)).toBeInTheDocument();
+  });
+
+  it("sends a CSRF state param on the SSO redirect and stores it for the callback", async () => {
+    vi.mocked(auth.ssoConfig).mockResolvedValueOnce({
+      enabled: true,
+      provider: "okta",
+      provider_name: "Okta",
+      client_id: "my-client-id",
+      authorization_endpoint: "https://myorg.okta.com/oauth2/default/v1/authorize",
+      extra_auth_params: { hd: "example.com" },
+    });
+    const user = userEvent.setup();
+
+    // Stub window.location so the redirect assignment is capturable in jsdom.
+    const originalLocation = window.location;
+    Object.defineProperty(window, "location", {
+      value: { ...originalLocation, origin: originalLocation.origin, href: "" },
+      writable: true,
+      configurable: true,
+    });
+
+    try {
+      renderLogin();
+
+      await user.click(await screen.findByText(/sign in with okta/i));
+
+      const url = new URL(window.location.href);
+      expect(url.origin + url.pathname).toBe(
+        "https://myorg.okta.com/oauth2/default/v1/authorize",
+      );
+      const state = url.searchParams.get("state");
+      expect(state).toBeTruthy();
+      // The callback validates against this stored copy — they must match.
+      expect(sessionStorage.getItem("sso_login_state")).toBe(state);
+      // Extra auth params still pass through and cannot clobber the state.
+      expect(url.searchParams.get("hd")).toBe("example.com");
+      expect(url.searchParams.get("client_id")).toBe("my-client-id");
+    } finally {
+      Object.defineProperty(window, "location", {
+        value: originalLocation,
+        writable: true,
+        configurable: true,
+      });
+    }
   });
 
   it("handles ssoConfig fetch failure gracefully", async () => {

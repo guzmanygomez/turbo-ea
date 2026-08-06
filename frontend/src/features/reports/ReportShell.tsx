@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { Trans, useTranslation } from "react-i18next";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
@@ -26,7 +26,7 @@ export interface PrintParam {
   value: string;
 }
 
-interface Props {
+export interface ReportShellProps {
   title: string;
   icon: string;
   iconColor?: string;
@@ -96,7 +96,7 @@ export default function ReportShell({
   disableExport,
   paginateRowSelector,
   children,
-}: Props) {
+}: ReportShellProps) {
   const { t } = useTranslation(["reports", "common"]);
   const navigate = useNavigate();
   const [exportMenu, setExportMenu] = useState<HTMLElement | null>(null);
@@ -139,8 +139,10 @@ export default function ReportShell({
   const exportEnabled = !disableExport && !!chartRef;
   // Match the export format to what the user is currently looking at:
   // PPTX captures the chart, XLSX harvests the rendered tables. Reports
-  // without a table toggle are inherently chart-only.
-  const showXlsxItem = exportEnabled && hasTableToggle && view === "table";
+  // without a table toggle are inherently chart-only — unless they supply
+  // their own `buildExportData`, which means they hand over real tabular
+  // data instead of relying on the DOM scrape, so XLSX always applies.
+  const showXlsxItem = exportEnabled && (!!buildExportData || (hasTableToggle && view === "table"));
   const showPptxItem = exportEnabled && (!hasTableToggle || view === "chart");
 
   return (

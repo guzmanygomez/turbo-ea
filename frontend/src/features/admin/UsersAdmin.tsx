@@ -36,6 +36,7 @@ import { useIsRtl } from "@/hooks/useIsRtl";
 import OutlinedInput from "@mui/material/OutlinedInput";
 import type { User, SsoInvitation, AppRole, UserGroup } from "@/types";
 import MaterialSymbol from "@/components/MaterialSymbol";
+import { useColumnFreeze } from "@/components/grid/useColumnFreeze";
 import RolesAdmin from "@/features/admin/RolesAdmin";
 import UserGroupsTab from "@/features/admin/UserGroupsTab";
 import UsersFilterSidebar, {
@@ -82,9 +83,14 @@ const DEFAULT_SIDEBAR_WIDTH = 280;
 interface UsersAdminPrefs {
   filters?: UserFilters;
   columns?: string[];
+  /** colIds frozen to the leading edge via the header pin. */
+  frozenColumns?: string[];
   sidebarWidth?: number;
   sidebarCollapsed?: boolean;
 }
+
+/** Frozen out of the box — the name column is what identifies each row. */
+const DEFAULT_FROZEN_USER_COLUMNS = ["display_name"];
 
 function loadPrefs(): UsersAdminPrefs | null {
   try {
@@ -172,16 +178,28 @@ export default function UsersAdmin() {
     () => savedPrefsRef.current?.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH,
   );
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
+  // A pref written before columns could be frozen has no key at all — fall
+  // back to the default so the name column stays frozen for existing users,
+  // exactly as it was when it was hard-pinned.
+  const [frozenColumns, setFrozenColumns] = useState<string[]>(
+    () => savedPrefsRef.current?.frozenColumns ?? DEFAULT_FROZEN_USER_COLUMNS,
+  );
+  // Per-column freeze toggles in the header, persisted with the other prefs.
+  const columnFreeze = useColumnFreeze<User>(gridApiRef, {
+    frozen: frozenColumns,
+    onFrozenChange: setFrozenColumns,
+  });
 
   // Persist prefs whenever they change
   useEffect(() => {
     savePrefs({
       filters,
       columns: Array.from(selectedColumns),
+      frozenColumns,
       sidebarWidth,
       sidebarCollapsed,
     });
-  }, [filters, selectedColumns, sidebarWidth, sidebarCollapsed]);
+  }, [filters, selectedColumns, frozenColumns, sidebarWidth, sidebarCollapsed]);
 
   const fetchRoles = useCallback(async () => {
     try {
@@ -595,28 +613,13 @@ export default function UsersAdmin() {
   }, []);
 
   /* ---- AG Grid column defs ---- */
-  const columnDefs = useMemo<ColDef<User>[]>(
+  const rawColumnDefs = useMemo<ColDef<User>[]>(
     () => [
-      {
-        headerName: "",
-        field: "id",
-        checkboxSelection: true,
-        headerCheckboxSelection: true,
-        headerCheckboxSelectionFilteredOnly: true,
-        width: 44,
-        pinned: "left",
-        sortable: false,
-        filter: false,
-        resizable: false,
-        suppressMovable: true,
-        suppressHeaderMenuButton: true,
-      },
       {
         field: "display_name",
         headerName: t("users.columns.name"),
         minWidth: 280,
         flex: 1,
-        pinned: "left",
         hide: false, // always shown (locked)
         sortable: true,
         cellRenderer: (p: { data?: User; value: string }) => {
@@ -963,8 +966,31 @@ export default function UsersAdmin() {
     ],
   );
 
+  const columnDefs = useMemo<ColDef<User>[]>(
+    () => columnFreeze.applyFrozen(rawColumnDefs),
+    [rawColumnDefs, columnFreeze],
+  );
+
   const defaultColDef = useMemo<ColDef>(
-    () => ({ sortable: true, filter: true, resizable: true }),
+    () => ({
+      sortable: true,
+      filter: true,
+      resizable: true,
+      headerComponentParams: columnFreeze.headerComponentParams,
+    }),
+    [columnFreeze.headerComponentParams],
+  );
+  // AG Grid v32 multi-select API — the checkbox selection column is
+  // auto-generated. ``selectAll: "filtered"`` makes the header checkbox respect
+  // the active filters (matching the old headerCheckboxSelectionFilteredOnly).
+  const rowSelection = useMemo(
+    () =>
+      ({
+        mode: "multiRow" as const,
+        enableClickSelection: false,
+        headerCheckbox: true,
+        selectAll: "filtered" as const,
+      }),
     [],
   );
   const getRowId = useCallback((p: { data: User }) => p.data.id, []);
@@ -992,6 +1018,8 @@ export default function UsersAdmin() {
       onWidthChange={isMobile ? () => {} : setSidebarWidth}
       selectedColumns={selectedColumns}
       onSelectedColumnsChange={setSelectedColumns}
+      frozenColumns={columnFreeze.frozenColumns}
+      onToggleFrozen={columnFreeze.toggleFrozen}
       onResetColumns={handleResetColumns}
     />
   );
@@ -1110,8 +1138,9 @@ export default function UsersAdmin() {
             )}
 
             <Box
+              ref={columnFreeze.containerRef}
               className={mode === "dark" ? "ag-theme-quartz-dark" : "ag-theme-quartz"}
-              sx={{ flex: 1, minHeight: 0 }}
+              sx={{ flex: 1, minHeight: 0, ...columnFreeze.sx }}
             >
               <AgGridReact<User>
                 key={isRtl ? "rtl" : "ltr"}
@@ -1124,8 +1153,9 @@ export default function UsersAdmin() {
                 loading={loading}
                 animateRows
                 rowHeight={48}
-                rowSelection="multiple"
-                suppressRowClickSelection
+                rowSelection={rowSelection}
+                // Keeps the checkbox column left of every frozen column.
+                selectionColumnDef={columnFreeze.selectionColumnDef}
                 onGridReady={(params) => {
                   gridApiRef.current = params.api;
                 }}

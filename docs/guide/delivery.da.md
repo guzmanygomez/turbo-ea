@@ -4,7 +4,7 @@
 
 Når PPM er aktiveret — den typiske konfiguration — lever EA Delivery **inde i PPM-modulet**: åbn **PPM** i topnavigationen, og skift til fanen **EA Delivery** (`/ppm?tab=ea-delivery`). Når PPM er deaktiveret, vises **EA Delivery** som et dedikeret topniveau-nav-element, der linker til `/reports/ea-delivery`. Den ældre URL `/ea-delivery` virker fortsat som en omdirigering uanset, så eksisterende bogmærker stadig fungerer.
 
-![EA Delivery-styring](../assets/img/en/17_ea_delivery.png)
+![EA Delivery-styring](../assets/img/da/17_ea_delivery.png)
 
 ## Initiativ-arbejdsområde
 
@@ -68,7 +68,7 @@ Når en SoAW er godkendt, kan du anmode om underskrifter fra interessenter. Klik
 
 ### SoAW-fane på initiativkort
 
-![Initiativkort — SoAW-fane](../assets/img/en/55_initiative_soaw_tab.png)
+![Initiativkort — SoAW-fane](../assets/img/da/55_initiative_soaw_tab.png)
 
 Initiativer eksponerer også en dedikeret **SoAW**-fane direkte på deres kortdetaljeside. Fanen viser hver SoAW linket til det initiativ (titel, statuschip, revisionsnummer, sidst-ændret-dato) med en **+ New SoAW**-knap, der på forhånd vælger det aktuelle initiativ — så du kan forfatte eller hoppe til en SoAW uden at forlade det kort, du arbejder på. Oprettelse genbruger den samme dialog som EA Delivery-siden, og det nye dokument vises begge steder. Synligheden af fanen følger de almindelige kort-tilladelsesregler.
 
@@ -80,10 +80,10 @@ Det **centrale ADR-register** — hvor hver ADR på tværs af landskabet filtrer
 
 ## Resources-fane
 
-![Kortets Resources-fane](../assets/img/en/17c_card_resources.png)
+![Kortets Resources-fane](../assets/img/da/17c_card_resources.png)
 
 Kort indeholder nu en **Resources**-fane, der konsoliderer:
 
-- **Architecture Decisions** — ADR'er linket til dette kort, vist som farvede piller, der matcher deres korttypefarver. Du kan linke eksisterende ADR'er eller oprette en ny ADR direkte fra Resources-fanen — den nye ADR linkes automatisk til kortet.
+- **Architecture Decisions** — ADR'er vises ikke længere her. Hvert kort har nu sin egen **ADRs**-fane; se [Kortdetaljer](card-details.md) for hvad den viser, og hvordan du tilknytter, opretter eller frakobler beslutninger fra et kort.
 - **Filvedhæftninger** — Upload og administrer filer (PDF, DOCX, XLSX, billeder, op til 10 MB). Når du uploader, skal du vælge en **dokumentkategori** fra: Architecture, Security, Compliance, Operations, Meeting Notes, Design eller Other. Kategorien vises som en chip ved siden af hver fil.
 - **Dokumentlinks** — URL-baserede dokumentreferencer. Når du tilføjer et link, skal du vælge en **linktype** fra: Documentation, Security, Compliance, Architecture, Operations, Support eller Other. Linktypen vises som en chip ved siden af hvert link, og ikonet skifter baseret på den valgte type.

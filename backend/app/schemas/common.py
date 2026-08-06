@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.schemas.risk_mitigation_task import MAX_LEAD_TIME_DAYS, RecurrenceUnitLiteral
 
@@ -10,6 +11,47 @@ from app.schemas.risk_mitigation_task import MAX_LEAD_TIME_DAYS, RecurrenceUnitL
 class StakeholderCreate(BaseModel):
     user_id: str
     role: str  # responsible/accountable/observer
+
+
+class StakeholderBulkOperation(BaseModel):
+    """One add/remove of a (card, user, role) stakeholder assignment.
+
+    The user may be referenced by ``user_id`` or by ``user_email`` (resolved
+    case-insensitively server-side) — the spreadsheet importer round-trips
+    emails, the grid editor already holds ids.
+    """
+
+    row_index: int | None = None
+    action: Literal["add", "remove"] = "add"
+    card_id: str
+    user_id: str | None = None
+    user_email: str | None = None
+    role: str
+
+    @model_validator(mode="after")
+    def _require_user_ref(self) -> StakeholderBulkOperation:
+        if not self.user_id and not self.user_email:
+            raise ValueError("Either user_id or user_email is required")
+        return self
+
+
+class StakeholderBulkRequest(BaseModel):
+    operations: list[StakeholderBulkOperation] = Field(..., min_length=1, max_length=1000)
+    dry_run: bool = False
+
+
+class StakeholderBulkResult(BaseModel):
+    row_index: int | None = None
+    status: Literal["added", "removed", "noop", "error"]
+    error: str | None = None
+
+
+class StakeholderBulkResponse(BaseModel):
+    results: list[StakeholderBulkResult]
+    added: int
+    removed: int
+    failed: int
+    dry_run: bool
 
 
 class CommentCreate(BaseModel):
@@ -39,6 +81,10 @@ class TodoCreate(BaseModel):
     description: str
     assigned_to: str | None = None
     due_date: str | None = None
+    # Optional in-app deep link rendered on the todo (e.g. an ADR page).
+    # Relative paths only ("/…") — validated in the route so a todo can
+    # never carry an external URL.
+    link: str | None = Field(default=None, max_length=500)
     # Recurrence (card todos only). ``recurrence_unit == "none"`` (the
     # default) creates an ordinary one-shot todo. ``lead_time_days`` is
     # optional — when omitted on a recurring todo the server picks a smart
@@ -163,6 +209,7 @@ class BookmarkCreate(BaseModel):
     filters: dict | None = None
     columns: list | None = None
     column_state: list | None = None
+    column_filter_model: dict | None = None
     sort: dict | None = None
     is_default: bool = False
     visibility: str = "private"
@@ -176,6 +223,7 @@ class BookmarkUpdate(BaseModel):
     filters: dict | None = None
     columns: list | None = None
     column_state: list | None = None
+    column_filter_model: dict | None = None
     sort: dict | None = None
     is_default: bool | None = None
     visibility: str | None = None
@@ -190,6 +238,7 @@ class BookmarkResponse(BaseModel):
     filters: dict | None = None
     columns: list | None = None
     column_state: list | None = None
+    column_filter_model: dict | None = None
     sort: dict | None = None
     is_default: bool
     visibility: str = "private"
@@ -226,6 +275,8 @@ class WebPortalCreate(BaseModel):
     display_fields: list | None = None
     card_config: dict | None = None
     is_published: bool = False
+    access_mode: str | None = None  # "public" | "sso"; None → "public"
+    allowed_email_domains: list[str] | None = None
 
 
 class WebPortalUpdate(BaseModel):
@@ -237,6 +288,8 @@ class WebPortalUpdate(BaseModel):
     display_fields: list | None = None
     card_config: dict | None = None
     is_published: bool | None = None
+    access_mode: str | None = None
+    allowed_email_domains: list[str] | None = None
 
 
 class SavedReportCreate(BaseModel):

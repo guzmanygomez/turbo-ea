@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
 import Typography from "@mui/material/Typography";
@@ -11,38 +11,167 @@ interface Props {
   onSsoCallback: (code: string, redirectUri: string) => Promise<void>;
 }
 
+/** Which published, account-less resource an SSO round-trip belongs to. Both
+ *  reuse this one redirect URI (already registered with the IdP for login), so
+ *  neither needs any IdP reconfiguration — `t` is what tells them apart. */
+type PublicResource = "portal" | "diagram";
+
+interface PortalState {
+  t: PublicResource;
+  slug: string;
+  nonce: string;
+  silent?: boolean;
+}
+
+/** API path + in-app return route for each published resource kind. */
+const RESOURCE_ROUTES: Record<PublicResource, { api: string; view: (s: string) => string }> = {
+  portal: { api: "web-portals", view: (slug) => `/portal/${slug}` },
+  diagram: { api: "diagrams", view: (slug) => `/embed/diagram/${slug}` },
+};
+
+function parsePortalState(raw: string | null): PortalState | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(atob(raw));
+    if (
+      parsed &&
+      (parsed.t === "portal" || parsed.t === "diagram") &&
+      typeof parsed.slug === "string"
+    ) {
+      return parsed as PortalState;
+    }
+  } catch {
+    // Not a published-resource state — a normal login callback.
+  }
+  return null;
+}
+
+/**
+ * Shared OAuth redirect target (/auth/callback). Handles both normal user login
+ * and SSO-gated web-portal sign-in — the two are told apart by the OAuth
+ * `state`. Reusing one redirect URI means an SSO portal needs no extra IdP
+ * registration beyond the login one that already works.
+ */
 export default function SsoCallback({ onSsoCallback }: Props) {
-  const { t } = useTranslation("auth");
+  const { t } = useTranslation(["auth", "common"]);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [error, setError] = useState("");
+  // Set when a portal sign-in is denied for a real reason (e.g. email domain
+  // not allowed) — distinct from the silent-auth fallback, which bounces the
+  // visitor back to the portal's sign-in button without an error.
+  const [portalDenied, setPortalDenied] = useState<{ slug: string; message: string } | null>(null);
 
   useEffect(() => {
     const code = searchParams.get("code");
     const errorParam = searchParams.get("error");
     const errorDesc = searchParams.get("error_description");
+    const portalState = parsePortalState(searchParams.get("state"));
 
+    if (portalState) {
+      handlePortalReturn(portalState, code, errorParam);
+      return;
+    }
+
+    // ---- normal user login callback ----
+    // Single-use CSRF state, stored by LoginPage just before redirecting (#860).
+    const storedState = sessionStorage.getItem("sso_login_state");
+    sessionStorage.removeItem("sso_login_state");
     if (errorParam) {
       setError(errorDesc || errorParam);
       return;
     }
-
+    if (!storedState || storedState !== searchParams.get("state")) {
+      setError(t("sso.stateMismatch"));
+      return;
+    }
     if (!code) {
       setError(t("sso.noCodeGeneric"));
       return;
     }
-
-    // Build the redirect_uri that matches what was sent in the authorization request
     const redirectUri = `${window.location.origin}/auth/callback`;
-
     onSsoCallback(code, redirectUri)
-      .then(() => {
-        navigate("/", { replace: true });
-      })
-      .catch((err) => {
-        setError(err instanceof Error ? err.message : t("sso.failed"));
-      });
+      .then(() => navigate("/", { replace: true }))
+      .catch((err) => setError(err instanceof Error ? err.message : t("sso.failed")));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handlePortalReturn(state: PortalState, code: string | null, errorParam: string | null) {
+    const { slug, nonce } = state;
+    const routes = RESOURCE_ROUTES[state.t];
+    const flagKey = `portal_silent_${state.t}_${slug}`;
+    const back = () => navigate(routes.view(slug), { replace: true });
+
+    // CSRF: the nonce must match the one stored just before we redirected.
+    const storedNonce = sessionStorage.getItem("portal_sso_nonce");
+    sessionStorage.removeItem("portal_sso_nonce");
+    if (!storedNonce || storedNonce !== nonce) {
+      sessionStorage.setItem(flagKey, "failed");
+      back();
+      return;
+    }
+
+    // IdP returned an error (silent attempt needs interaction, or the user
+    // cancelled): fall back to the portal's explicit sign-in button.
+    if (errorParam || !code) {
+      sessionStorage.setItem(flagKey, "failed");
+      back();
+      return;
+    }
+
+    // Exchange the code for an account-less portal-session cookie.
+    const redirectUri = `${window.location.origin}/auth/callback`;
+    fetch(`/api/v1/${routes.api}/public/${slug}/sso/callback`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, redirect_uri: redirectUri }),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: res.statusText }));
+          throw new Error(err.detail || res.statusText);
+        }
+        sessionStorage.removeItem(flagKey);
+        back();
+      })
+      .catch((e) => {
+        // A real denial (domain not allowed / email unverified) — show it
+        // rather than looping the visitor back through sign-in.
+        sessionStorage.setItem(flagKey, "failed");
+        setPortalDenied({
+          slug,
+          message: e instanceof Error ? e.message : t("common:portal.signInError"),
+        });
+      });
+  }
+
+  if (portalDenied) {
+    return (
+      <Box
+        sx={{
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          bgcolor: "#1a1a2e",
+          gap: 2,
+          px: 3,
+        }}
+      >
+        <Alert severity="error" sx={{ maxWidth: 500 }}>
+          {portalDenied.message}
+        </Alert>
+        <Button
+          variant="contained"
+          onClick={() => navigate(`/portal/${portalDenied.slug}`, { replace: true })}
+          sx={{ mt: 2 }}
+        >
+          {t("common:actions.retry")}
+        </Button>
+      </Box>
+    );
+  }
 
   return (
     <Box

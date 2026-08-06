@@ -34,6 +34,15 @@ Klicken Sie auf **+ Neuer Typ**, um einen benutzerdefinierten Kartentyp zu erste
 
 Klicken Sie auf einen beliebigen Typ, um die **Typ-Detail-Schublade** zu öffnen. Hier können Sie konfigurieren:
 
+#### Typfarbe
+
+Jeder Kartentyp — auch die vordefinierten — hat eine anpassbare Farbe, die im Inventar, in Berichten, Abhängigkeitsansichten und Diagrammen verwendet wird. So können Sie Turbo EA an die visuellen Konventionen Ihrer Organisation anpassen (z. B. TOGAF/ArchiMate-Paletten: Geschäftselemente in Gelb/Orange, Anwendungen in Blau).
+
+- Wählen Sie eine Farbe über das Farbfeld im Drawer. Ein Hinweis erscheint, wenn die gewählte Farbe einen sehr geringen Kontrast zu hellen oder dunklen Hintergründen hat.
+- Vordefinierte Typen zeigen neben dem Farbfeld eine **Zurücksetzen**-Schaltfläche, sobald die Farbe vom Turbo-EA-Standard abweicht — Sie können also jederzeit zur Standardpalette zurückkehren.
+- Text auf Typfarben (Chips, Diagrammformen) wechselt für die Lesbarkeit automatisch zwischen Schwarz und Weiß, sowohl im hellen als auch im dunklen Modus.
+- Der Farbwähler zeigt neben der Palette eine **Live-Vorschau**: Typname, Chip, Kartensymbol, Subtyp, Karten-ID-Pill und ein Abhängigkeitsdiagramm-Knoten, jeweils einmal im hellen und einmal im dunklen Modus, die sich bei der Auswahl live aktualisiert.
+
 #### Felder
 
 Felder definieren die benutzerdefinierten Attribute, die auf Karten dieses Typs verfügbar sind. Jedes Feld hat:
@@ -60,6 +69,17 @@ Felder werden in **Abschnitte** auf der Kartendetailseite organisiert. Sie könn
 - Felder innerhalb eines Abschnitts per Drag-and-drop neu anordnen und über die **Verschieben**-Aktion in einen anderen Abschnitt verschieben
 
 Der spezielle Abschnittsname `__description` fügt Felder zum Beschreibungsabschnitt der Kartendetailseite hinzu.
+
+#### Karten-ID
+
+Aktivieren Sie **Karten-ID-Generierung**, um Karten dieses Typs eine stabile, lesbare ID zu geben (z. B. `APP-00001`). Die ID erscheint als Pille zum Kopieren neben dem Kartentyp auf der Detailseite, als optionale sortier- und filterbare Spalte im Inventar, in Excel-Exporten und in Formeln berechneter Felder (über `data.reference`).
+
+Die **Nummer wird immer automatisch erzeugt**; steuern lässt sich nur das **Präfix**. Beim Einschalten wird ein vorgeschlagenes Präfix (aus dem Typnamen abgeleitet, z. B. `APP-`) als Text angezeigt – zum Ändern auf den Stift klicken. Zwei Einstellungen steuern die Nummer:
+
+- **Beginn bei** – die erste Nummer der Serie (Standard `1`).
+- **Min. Stellen** – Breite der Nullauffüllung (Standard `5`), sodass `1` als `00001` erscheint. Es ist ein Minimum; die Nummern werden länger, sobald sie es überschreiten. Ein **Beispiel** zeigt live die erste ID.
+
+IDs sind **global eindeutig, schreibgeschützt und werden nie wiederverwendet oder geändert**. Die Nummernfolge wird **je Präfix workspaceweit** geführt, sodass Typen mit gleichem Präfix eine durchgehende, kollisionsfreie Serie bilden. Sobald Karten dieses Typs IDs haben, ist das gesamte Format – Präfix, Beginn und Min. Stellen – gesperrt (die Felder werden schreibgeschützt); nur das Ausschalten bleibt möglich. Das Speichern weist bestehenden Karten nie IDs zu; nutzen Sie die separate Schaltfläche **IDs generieren**, um den Rückstand bei Bedarf zu füllen (mit Fortschrittsanzeige und Bestätigung).
 
 #### Datenqualitätsbewertung
 
@@ -97,6 +117,15 @@ Wenn bei einer Karte kein Subtyp ausgewählt ist (oder der Typ keine Subtypen ha
 
 Definieren Sie benutzerdefinierte Rollen für diesen Typ (z.B. «Anwendungseigner», «Technischer Eigner»). Jede Rolle hat **kartenebene Berechtigungen**, die beim Zugriff auf eine Karte mit der anwendungsweiten Rolle des Benutzers kombiniert werden. Siehe [Benutzer & Rollen](users.md) für mehr zum Berechtigungsmodell.
 
+Jede Rolle hat einen **Schlüssel** (die auf Karten gespeicherte Kennung, die auch von den `stakeholder:<Rollenschlüssel>`-Import-/Exportspalten verwendet wird) und eine **Bezeichnung** (was Benutzer sehen). Der Schlüssel folgt derselben Konvention wie jeder andere Metamodell-Schlüssel — nur Buchstaben und Ziffern, beginnend mit einem Buchstaben, 3–50 Zeichen, üblicherweise camelCase wie `businessArchitect`. Er wird automatisch aus der Bezeichnung abgeleitet, sodass Sie ihn selten selbst eingeben müssen.
+
+Rollen lassen sich auf zwei Arten entfernen:
+
+- **Archivieren** — die Rolle bleibt auf Karten erhalten, die sie bereits verwenden, kann aber nicht mehr zugewiesen werden und gewährt keine Berechtigungen auf Kartenebene mehr. Archivierte Rollen erscheinen über den Schalter **Archivierte anzeigen** und können jederzeit wiederhergestellt werden. Das ist die richtige Wahl für eine Rolle, die tatsächlich verwendet wurde.
+- **Löschen** — dauerhaft und nur möglich, solange die Rolle nicht verwendet wird. Turbo EA verweigert das Löschen einer Rolle, die jemand auf einer Karte dieses Typs innehat, die von einer Umfrage verwendet wird oder die letzte aktive Rolle des Typs ist; der Bestätigungsdialog nennt den Grund und bietet stattdessen das Archivieren an. So räumen Sie eine versehentlich angelegte Rolle auf.
+
+Der Schlüssel einer Rolle lässt sich korrigieren, solange **niemand die Rolle innehat** — Umfragen, die sie verwenden, folgen der Umbenennung automatisch, und auch die einzige Rolle eines Typs lässt sich umbenennen, da die Rolle dabei erhalten bleibt. Sobald jemand die Rolle innehat, ist der Schlüssel gesperrt und das Feld erklärt warum. Rollen, die vor dieser Konvention angelegt wurden, behalten ihren bestehenden Schlüssel und funktionieren weiterhin; geprüft wird nur ein neuer oder geänderter Schlüssel.
+
 #### Übersetzungen
 
 Klicken Sie auf die Schaltfläche **Übersetzen** in der Symbolleiste des Typ-Drawers, um den **Übersetzungsdialog** zu öffnen. Hier können Sie Übersetzungen für alle Metamodell-Bezeichnungen in jeder unterstützten Sprache angeben:
@@ -128,6 +157,10 @@ Beziehungstypen definieren die zulässigen Verbindungen zwischen Kartentypen. Je
 | **Kardinalität** | n:m (viele-zu-viele) oder 1:n (eins-zu-viele) |
 
 Klicken Sie auf **+ Neuer Beziehungstyp**, um eine Beziehung zu erstellen, oder klicken Sie auf einen bestehenden, um dessen Bezeichnungen und Attribute zu bearbeiten.
+
+Die Felder **Bezeichnung** und **Umgekehrte Bezeichnung** werden in der Sprache erfasst, die Sie gerade verwenden — die Feldbeschriftung zeigt an, welche (zum Beispiel *Bezeichnung (Deutsch)*). Beim Umbenennen einer Beziehung wird diese Sprache überall aktualisiert, wo das Verb erscheint: im Abschnitt **Beziehungen** einer Karte, in den Beziehungsspalten des Inventars, in Berichten, Portalen und Diagrammen. Andere Sprachen behalten ihre eigene Formulierung, bis Sie sie übersetzen.
+
+Mit **Übersetzungen verwalten** oben im Reiter Beziehungstypen übersetzen Sie die Verben aller Beziehungen in einem Durchgang in jede aktivierte Sprache. Wählen Sie einen Sprachreiter, tragen Sie die Formulierung neben dem englischen Original ein und speichern Sie — der Zähler auf jedem Reiter zeigt, wie viele Verben in dieser Sprache noch fehlen. Englisch erscheint hier nicht, denn es ist die Formulierung an der Beziehung selbst; ein nicht übersetztes Verb fällt darauf zurück.
 
 ### Beziehungsattribute
 
@@ -219,7 +252,7 @@ Der Compliance-Scanner und der Risk-Promotion-Flow funktionieren **auch ohne kon
 
 Für jeden Kartentyp steuert der **Layout**-Bereich in der Typ-Schublade, wie die Kartendetailseite aufgebaut ist:
 
-- **Abschnittsreihenfolge** — Abschnitte (Beschreibung, EOL, Lebenszyklus, Hierarchie, Beziehungen und benutzerdefinierte Abschnitte) per Drag & Drop neu anordnen
+- **Abschnittsreihenfolge** — Abschnitte (Beschreibung, EOL, Lebenszyklus, Hierarchie, Tags, Beziehungen und benutzerdefinierte Abschnitte) per Drag & Drop neu anordnen
 - **Sichtbarkeit** — Abschnitte ausblenden, die für einen Typ nicht relevant sind
 - **Standarderweiterung** — Wählen, ob jeder Abschnitt standardmäßig erweitert oder eingeklappt startet
 - **Spaltenlayout** — 1 oder 2 Spalten pro benutzerdefiniertem Abschnitt festlegen

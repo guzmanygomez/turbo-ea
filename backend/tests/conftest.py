@@ -281,9 +281,14 @@ async def create_card_type(
         icon=kwargs.get("icon", "apps"),
         color=kwargs.get("color", "#0f7eb5"),
         fields_schema=fields_schema if fields_schema is not None else [],
+        subtypes=kwargs.get("subtypes", []),
+        # Legacy JSONB mirror of the stakeholder role definitions — only read
+        # when the definition table has no rows for the type.
+        stakeholder_roles=kwargs.get("stakeholder_roles", []),
         has_hierarchy=kwargs.get("has_hierarchy", False),
         built_in=kwargs.get("built_in", False),
         is_hidden=kwargs.get("is_hidden", False),
+        translations=kwargs.get("translations", {}),
     )
     db.add(ct)
     await db.flush()
@@ -313,6 +318,48 @@ async def create_card(db, *, card_type="Application", name="Test Card", user_id=
     return card
 
 
+async def create_budget_line(db, *, initiative_id, fiscal_year=2025, category="capex", amount=0.0):
+    """Insert a PPM budget line (planned spend for one fiscal year)."""
+    from app.models.ppm_cost_line import PpmBudgetLine
+
+    line = PpmBudgetLine(
+        initiative_id=initiative_id,
+        fiscal_year=fiscal_year,
+        category=category,
+        amount=amount,
+    )
+    db.add(line)
+    await db.flush()
+    return line
+
+
+async def create_cost_line(
+    db,
+    *,
+    initiative_id,
+    category="capex",
+    description="Cost line",
+    planned=0.0,
+    actual=0.0,
+    date=None,
+):
+    """Insert a PPM cost line. ``date`` may be None — such a row counts towards
+    the totals but belongs to no fiscal year."""
+    from app.models.ppm_cost_line import PpmCostLine
+
+    line = PpmCostLine(
+        initiative_id=initiative_id,
+        description=description,
+        category=category,
+        planned=planned,
+        actual=actual,
+        date=date,
+    )
+    db.add(line)
+    await db.flush()
+    return line
+
+
 async def create_relation_type(
     db,
     *,
@@ -336,6 +383,7 @@ async def create_relation_type(
         built_in=kwargs.get("built_in", False),
         is_hidden=kwargs.get("is_hidden", False),
         sort_order=kwargs.get("sort_order", 0),
+        translations=kwargs.get("translations", {}),
     )
     db.add(rt)
     await db.flush()

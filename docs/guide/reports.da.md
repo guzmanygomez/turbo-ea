@@ -2,11 +2,11 @@
 
 Turbo EA indeholder et kraftfuldt **visuelt rapporteringsmodul**, der gør det muligt at analysere virksomheds­arkitekturen fra forskellige perspektiver. Alle rapporter kan [gemmes til genbrug](saved-reports.md) med deres aktuelle filter- og akse­konfiguration.
 
-![Menu over tilgængelige rapporter](../assets/img/en/09_reports_menu.png)
+![Menu over tilgængelige rapporter](../assets/img/da/09_reports_menu.png)
 
 ## Porteføljerapport
 
-![Porteføljerapport](../assets/img/en/10_report_portfolio.png)
+![Porteføljerapport](../assets/img/da/10_report_portfolio.png)
 
 **Porteføljerapporten** viser et konfigurerbart **boblediagram** (eller scatter plot) over dine kort. Du vælger, hvad hver akse repræsenterer:
 
@@ -23,7 +23,7 @@ Når AI er konfigureret, og porteføljeindsigter er aktiveret af en administrato
 
 ## Fleksibel portefølje
 
-![Fleksibel portefølje — Data Object-portefølje grupperet efter Application, farvet efter Data Sensitivity](../assets/img/en/57_report_flexible_portfolio.png)
+![Fleksibel portefølje — Data Object-portefølje grupperet efter Application, farvet efter Data Sensitivity](../assets/img/da/57_report_flexible_portfolio.png)
 
 **Fleksibel portefølje** bruger samme kontroller som Application Portfolio, men tilføjer en **Card type**-vælger øverst i værktøjslinjen. Brug den til at analysere en portefølje af Business Capabilities, Initiatives, IT Components eller en hvilken som helst anden synlig korttype med samme grupperings-, farvelægnings- og filteroplevelse.
 
@@ -35,9 +35,13 @@ Ved skift af korttype ryddes valg af gruppering, farvelægning og filtre (de ref
 
 Når et korts relationer bærer en «type»-værdi — for eksempel **anvendelsestypen** (Ejer / Bruger / Interessent) på Organisation→Applikation-relationer eller **supporttypen** på Applikation→Forretningskapabilitet-relationer — kan du farve kortene efter den værdi og filtrere på den. **Gruppér rapporten efter den relaterede korttype** for at bruge dem (f.eks. *Gruppér efter → Organisation* for at låse op for *anvendelsestype*): undertypen vises derefter under gruppen **Relationsundertyper** i *Farvelæg efter*-rullelisten og som sin egen filterrække. Da hvert kort vises under ét relateret kort, farves det efter *den* relation — en applikation, der er *Bruger* af én organisation, vises som Bruger der, selv om den ejes af en anden.
 
+### Indlejrede grupper
+
+Når du grupperer efter en relateret korttype, der understøtter hierarki (såsom Forretningskompetence eller Organisation), vises en **Indlejrede grupper**-kontakt ved siden af *Gruppér efter*-vælgeren. Aktivér den for at vise grupperne som bokse i bokse efter den relaterede types forælder/barn-hierarki — ligesom kompetencekortet. Vælgeren **Visningsdybde** styrer, hvor mange niveauer der udfoldes: hvert kort vises under sin dybeste synlige gruppe, og grupper under dybdegrænsen ruller deres kort op i den nærmeste synlige forfader. Grene uden kort skjules.
+
 ## Kompetencekort
 
-![Forretningskompetencekort](../assets/img/en/11_capability_map.png)
+![Forretningskompetencekort](../assets/img/da/11_capability_map.png)
 
 **Kompetencekortet** viser et hierarkisk **heatmap** over organisationens forretningskompetencer. Hver blok repræsenterer en kompetence med:
 
@@ -47,7 +51,7 @@ Når et korts relationer bærer en «type»-værdi — for eksempel **anvendelse
 
 ## Livscyklusrapport
 
-![Livscyklusrapport](../assets/img/en/12_lifecycle.png)
+![Livscyklusrapport](../assets/img/da/12_lifecycle.png)
 
 **Livscyklusrapporten** viser en **tidslinje­visualisering** af, hvornår teknologikomponenter blev introduceret, og hvornår de er planlagt til at blive pensioneret. Kritisk for:
 
@@ -59,7 +63,7 @@ Komponenter vises som vandrette bjælker, der spænder over deres livscyklus-fas
 
 ## Afhængighedsrapport
 
-![Afhængighedsrapport](../assets/img/en/13_dependencies.png)
+![Afhængighedsrapport](../assets/img/da/13_dependencies.png)
 
 **Afhængighedsrapporten** visualiserer **forbindelser mellem komponenter** som en netværksgraf. Noder repræsenterer kort, og kanter repræsenterer relationer. Funktioner:
 
@@ -70,7 +74,7 @@ Komponenter vises som vandrette bjælker, der spænder over deres livscyklus-fas
 
 ### Lagdelt afhængighedsvisning
 
-![Lagdelt afhængighedsvisning](../assets/img/en/13b_dependencies_c4.png)
+![Lagdelt afhængighedsvisning](../assets/img/da/13b_dependencies_c4.png)
 
 Skift til **lagdelt afhængighedsvisning** ved hjælp af view-mode-knapperne i værktøjslinjen. Dette er Turbo EA's husnotation til at vise afhængigheder mellem kort på tværs af de fire EA-lag — inspireret af ArchiMate's lagdeling og C4-modellens »good defaults«-filosofi, men adskilt fra begge. Den samme visning genbruges på Kortdetalje-siden (viser kortets umiddelbare afhængigheds­nabolag) og i [TurboLens Architect](turbolens.md#architecture-ai)-guiden, så afhængigheder ser ens ud overalt.
 
@@ -103,7 +107,7 @@ Skift til **lagdelt afhængighedsvisning** ved hjælp af view-mode-knapperne i v
 
 ## Omkostningsrapport
 
-![Omkostningsrapport](../assets/img/en/34_report_cost.png)
+![Omkostningsrapport](../assets/img/da/34_report_cost.png)
 
 **Omkostningsrapporten** giver finansiel analyse af dit teknologilandskab:
 
@@ -143,7 +147,7 @@ Tidslinjeskyderen, Cost Source-valget og andre filtre bevares, mens du driller, 
 
 ## Matrixrapport
 
-![Matrixrapport](../assets/img/en/35_report_matrix.png)
+![Matrixrapport](../assets/img/da/35_report_matrix.png)
 
 **Matrixrapporten** opretter et **krydsreference­gitter** mellem to korttyper. For eksempel:
 
@@ -153,9 +157,50 @@ Tidslinjeskyderen, Cost Source-valget og andre filtre bevares, mens du driller, 
 
 Dette er nyttigt til at identificere dækningshuller (kompetencer uden understøttende applikationer) eller redundanser (kompetencer understøttet af for mange applikationer).
 
+Brug kontakten **Skjul ikke-relaterede kort** for at skjule rækker og kolonner for kort uden relationer, så kun kort, der indgår i mindst én relation, vises. Den fulde visning med alle kort forbliver standardindstillingen.
+
+### Hvad hver celle viser
+
+Kontrollen **Cellevisning** tilbyder fire muligheder:
+
+- **Findes (prik)** — en prik alle steder, hvor der findes en relation.
+- **Antal (heatmap)** — hvor mange relationer der er, tonet efter tæthed.
+- **Værdier (koder)** — ét farvekodet bogstav pr. relationsværdi med en signaturforklaring over gitteret. Bedst til en stor matrix.
+- **Værdier (etiketter)** — værdinavnene i fuld længde. Kolonnerne bliver bredere, så det passer til en mindre matrix.
+
+Bogstaverne og navnene kommer fra de attributter, dine relationstyper erklærer, og vises på dit eget sprog. En CRUD-relation læses `C R U D`; en ejerskabsrelation viser sine egne værdier. Tilføj en værdi til en relationstype i [metamodellen](../admin/metamodel.md), så dukker den op her uden yderligere opsætning. En sammenklappet gruppecelle viser altid et antal, fordi den kan spænde over mange forskellige værdier — udvid et niveau for at se dem.
+
+Et kort med underliggende kort i hierarkiet kan også bære sine egne relationer. Når det gør, får det sin egen række (eller kolonne) med etiketten **(selv)** lige under sin gruppeoverskrift, så de relationer har et sted at vise sig i stedet for at gå tabt mellem forælderen og dens børn. Klap niveauet sammen, og de tælles med i gruppens celle sammen med børnenes.
+
+### Filtrering på relation
+
+Filterlinjen over gitteret indsnævrer matricen til de relationer, du er interesseret i:
+
+- **Relationstype** — når de to korttyper er forbundet i begge retninger.
+- **Retning** — om rækkens kort er relationens kilde eller mål.
+- **Værdier** — ét filter pr. attribut, som relationstyperne erklærer, inklusive «(tom)» for relationer, hvor værdien aldrig blev sat.
+
+Filtrering tømmer cellerne for de kort, der ikke længere matcher, så **Skjul kort uden match** efterlader kun dem, der gør. Nogle eksempler:
+
+- Applikation × Dataobjekt filtreret på *Opret* — hvilke applikationer der er kildesystem for hvert dataobjekt.
+- Applikation × Grænseflade filtreret på retning — hvem der udstiller en grænseflade, og hvem der forbruger den.
+- Organisation × Applikation filtreret på *Ejer* — ejerskabskortet, uden at brugerne fylder det op.
+
+### At finde huller i dækningen
+
+To felter tæller de kort på hver akse, der slet ingen relation har. **Vis kun huller** reducerer gitteret til netop dem — de kapabiliteter, ingen understøtter, og de dataobjekter, ingen vedligeholder.
+
+### At finde rundt i en stor matrix
+
+**Find række** og **Find kolonne** filtrerer akserne på navn; et overordnet element forbliver synligt, når et af dets underelementer matcher. Byt-knappen i titellinjen bytter om på de to akser.
+
+### Eksport
+
+Excel-eksport giver to ark: gitteret, som det ser ud på skærmen, og én række pr. relation med værdierne fordelt på kolonner — arket, du laver pivot på. PowerPoint-eksport fanger billedet.
+
 ## Datakvalitetsrapport
 
-![Datakvalitetsrapport](../assets/img/en/33_report_data_quality.png)
+![Datakvalitetsrapport](../assets/img/da/33_report_data_quality.png)
 
 **Datakvalitetsrapporten** er et **fuldstændigheds-dashboard**, der viser, hvor godt dine arkitekturdata er udfyldt. Baseret på de vigtighedsniveauer, der er konfigureret i fanen **Datakvalitet** for hver korttype (hvert felt plus de indbyggede faktorer Beskrivelse, Livscyklus, obligatoriske relationer og obligatoriske tags):
 
@@ -165,7 +210,7 @@ Dette er nyttigt til at identificere dækningshuller (kompetencer uden understø
 
 ## End of Life (EOL)-rapport
 
-![End of Life-rapport](../assets/img/en/32_report_eol.png)
+![End of Life-rapport](../assets/img/da/32_report_eol.png)
 
 **EOL-rapporten** viser support-status for teknologiprodukter linket via funktionen [EOL-administration](../admin/eol.md):
 
@@ -175,7 +220,7 @@ Dette er nyttigt til at identificere dækningshuller (kompetencer uden understø
 
 ## Gemte rapporter
 
-![Galleri af gemte rapporter](../assets/img/en/36_saved_reports.png)
+![Galleri af gemte rapporter](../assets/img/da/36_saved_reports.png)
 
 Gem en hvilken som helst rapportkonfiguration til hurtig adgang senere. Gemte rapporter inkluderer en miniature og kan deles på tværs af organisationen.
 

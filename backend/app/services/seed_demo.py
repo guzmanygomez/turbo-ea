@@ -15,6 +15,7 @@ from app.models.relation import Relation
 from app.models.soaw import SoAW
 from app.models.tag import CardTag, Tag, TagGroup
 from app.services.seed import TYPES as _META_TYPES
+from app.services.seed_markers import demo_seed_completed, mark_demo_seed_completed
 
 # ---------------------------------------------------------------------------
 # UUID registry – deterministic refs for cross-linking
@@ -3519,45 +3520,45 @@ RELATIONS = [
         {"crudCreate": False, "crudRead": True, "crudUpdate": False, "crudDelete": False},
     ),
     # ── Application → Interface (relAppToInterface) ──────────────
-    _rel("relAppToInterface", "app_sap_s4", "if_sap_tc_bom"),
-    _rel("relAppToInterface", "app_teamcenter", "if_sap_tc_bom"),
-    _rel("relAppToInterface", "app_sap_s4", "if_sap_mes"),
-    _rel("relAppToInterface", "app_opcenter", "if_sap_mes"),
-    _rel("relAppToInterface", "app_azure_iot", "if_iot_kafka"),
-    _rel("relAppToInterface", "app_kafka", "if_iot_kafka"),
-    _rel("relAppToInterface", "app_kafka", "if_kafka_ts"),
-    _rel("relAppToInterface", "app_timescale", "if_kafka_ts"),
-    _rel("relAppToInterface", "app_sf_sales", "if_sf_sap_order"),
-    _rel("relAppToInterface", "app_sap_s4", "if_sf_sap_order"),
-    _rel("relAppToInterface", "app_nexaportal", "if_portal_iot"),
-    _rel("relAppToInterface", "app_nexacloud", "if_portal_iot"),
-    _rel("relAppToInterface", "app_nexamobile", "if_mobile_iot"),
-    _rel("relAppToInterface", "app_nexacloud", "if_mobile_iot"),
-    _rel("relAppToInterface", "app_sap_s4", "if_sap_pbi"),
-    _rel("relAppToInterface", "app_powerbi", "if_sap_pbi"),
-    _rel("relAppToInterface", "app_azure_ad", "if_ad_okta"),
-    _rel("relAppToInterface", "app_okta", "if_ad_okta"),
-    _rel("relAppToInterface", "app_opcenter", "if_mes_quality"),
-    _rel("relAppToInterface", "app_quality_insp", "if_mes_quality"),
-    _rel("relAppToInterface", "app_teamcenter", "if_plm_erp_bom"),
-    _rel("relAppToInterface", "app_sap_s4", "if_plm_erp_bom"),
-    _rel("relAppToInterface", "app_nexacloud", "if_iot_grafana"),
-    _rel("relAppToInterface", "app_grafana", "if_iot_grafana"),
-    _rel("relAppToInterface", "app_servicenow", "if_sn_teams"),
-    _rel("relAppToInterface", "app_teams", "if_sn_teams"),
-    _rel("relAppToInterface", "app_splunk", "if_all_splunk"),
-    _rel("relAppToInterface", "app_github_actions", "if_gh_sonar"),
-    _rel("relAppToInterface", "app_sonarqube", "if_gh_sonar"),
-    _rel("relAppToInterface", "app_nexacloud", "if_iot_anomaly"),
-    _rel("relAppToInterface", "app_anomaly_ai", "if_iot_anomaly"),
-    _rel("relAppToInterface", "app_sap_s4", "if_sap_snow"),
-    _rel("relAppToInterface", "app_snowflake", "if_sap_snow"),
-    _rel("relAppToInterface", "app_hubspot", "if_hub_sf"),
-    _rel("relAppToInterface", "app_sf_sales", "if_hub_sf"),
-    _rel("relAppToInterface", "app_docusign", "if_docu_sf"),
-    _rel("relAppToInterface", "app_sf_sales", "if_docu_sf"),
-    _rel("relAppToInterface", "app_coupa", "if_coupa_sap"),
-    _rel("relAppToInterface", "app_sap_s4", "if_coupa_sap"),
+    _rel("relAppToInterface", "app_sap_s4", "if_sap_tc_bom", {"flowDirection": "forward"}),
+    _rel("relAppToInterface", "app_teamcenter", "if_sap_tc_bom", {"flowDirection": "reverse"}),
+    _rel("relAppToInterface", "app_sap_s4", "if_sap_mes", {"flowDirection": "forward"}),
+    _rel("relAppToInterface", "app_opcenter", "if_sap_mes", {"flowDirection": "reverse"}),
+    _rel("relAppToInterface", "app_azure_iot", "if_iot_kafka", {"flowDirection": "forward"}),
+    _rel("relAppToInterface", "app_kafka", "if_iot_kafka", {"flowDirection": "reverse"}),
+    _rel("relAppToInterface", "app_kafka", "if_kafka_ts", {"flowDirection": "forward"}),
+    _rel("relAppToInterface", "app_timescale", "if_kafka_ts", {"flowDirection": "reverse"}),
+    _rel("relAppToInterface", "app_sf_sales", "if_sf_sap_order", {"flowDirection": "forward"}),
+    _rel("relAppToInterface", "app_sap_s4", "if_sf_sap_order", {"flowDirection": "reverse"}),
+    _rel("relAppToInterface", "app_nexaportal", "if_portal_iot", {"flowDirection": "forward"}),
+    _rel("relAppToInterface", "app_nexacloud", "if_portal_iot", {"flowDirection": "reverse"}),
+    _rel("relAppToInterface", "app_nexamobile", "if_mobile_iot", {"flowDirection": "forward"}),
+    _rel("relAppToInterface", "app_nexacloud", "if_mobile_iot", {"flowDirection": "reverse"}),
+    _rel("relAppToInterface", "app_sap_s4", "if_sap_pbi", {"flowDirection": "forward"}),
+    _rel("relAppToInterface", "app_powerbi", "if_sap_pbi", {"flowDirection": "reverse"}),
+    _rel("relAppToInterface", "app_azure_ad", "if_ad_okta", {"flowDirection": "forward"}),
+    _rel("relAppToInterface", "app_okta", "if_ad_okta", {"flowDirection": "reverse"}),
+    _rel("relAppToInterface", "app_opcenter", "if_mes_quality", {"flowDirection": "forward"}),
+    _rel("relAppToInterface", "app_quality_insp", "if_mes_quality", {"flowDirection": "reverse"}),
+    _rel("relAppToInterface", "app_teamcenter", "if_plm_erp_bom", {"flowDirection": "forward"}),
+    _rel("relAppToInterface", "app_sap_s4", "if_plm_erp_bom", {"flowDirection": "reverse"}),
+    _rel("relAppToInterface", "app_nexacloud", "if_iot_grafana", {"flowDirection": "forward"}),
+    _rel("relAppToInterface", "app_grafana", "if_iot_grafana", {"flowDirection": "reverse"}),
+    _rel("relAppToInterface", "app_servicenow", "if_sn_teams", {"flowDirection": "forward"}),
+    _rel("relAppToInterface", "app_teams", "if_sn_teams", {"flowDirection": "reverse"}),
+    _rel("relAppToInterface", "app_splunk", "if_all_splunk", {"flowDirection": "forward"}),
+    _rel("relAppToInterface", "app_github_actions", "if_gh_sonar", {"flowDirection": "forward"}),
+    _rel("relAppToInterface", "app_sonarqube", "if_gh_sonar", {"flowDirection": "reverse"}),
+    _rel("relAppToInterface", "app_nexacloud", "if_iot_anomaly", {"flowDirection": "forward"}),
+    _rel("relAppToInterface", "app_anomaly_ai", "if_iot_anomaly", {"flowDirection": "reverse"}),
+    _rel("relAppToInterface", "app_sap_s4", "if_sap_snow", {"flowDirection": "forward"}),
+    _rel("relAppToInterface", "app_snowflake", "if_sap_snow", {"flowDirection": "reverse"}),
+    _rel("relAppToInterface", "app_hubspot", "if_hub_sf", {"flowDirection": "forward"}),
+    _rel("relAppToInterface", "app_sf_sales", "if_hub_sf", {"flowDirection": "reverse"}),
+    _rel("relAppToInterface", "app_docusign", "if_docu_sf", {"flowDirection": "forward"}),
+    _rel("relAppToInterface", "app_sf_sales", "if_docu_sf", {"flowDirection": "reverse"}),
+    _rel("relAppToInterface", "app_coupa", "if_coupa_sap", {"flowDirection": "forward"}),
+    _rel("relAppToInterface", "app_sap_s4", "if_coupa_sap", {"flowDirection": "reverse"}),
     # ── Application → Business Context (relAppToBizCtx) ──────────
     _rel("relAppToBizCtx", "app_teamcenter", "bctx_npi"),
     _rel("relAppToBizCtx", "app_teamcenter", "bctx_design_review"),
@@ -4668,7 +4669,7 @@ DEMO_ADRS = [
         "related_decisions": [],
         "signatories": [
             {
-                "user_id": "demo-placeholder",
+                "user_id": "demo-sig-cto-office",
                 "display_name": "CTO Office",
                 "email": "cto@nexatech.demo",
                 "status": "signed",
@@ -4706,7 +4707,7 @@ DEMO_ADRS = [
         "related_decisions": ["ADR-001"],
         "signatories": [
             {
-                "user_id": "demo-placeholder",
+                "user_id": "demo-sig-enterprise-architect",
                 "display_name": "Enterprise Architect",
                 "email": "ea@nexatech.demo",
                 "status": "signed",
@@ -4798,14 +4799,14 @@ DEMO_ADRS_EXTRA = [
         "related_decisions": ["ADR-001"],
         "signatories": [
             {
-                "user_id": "demo-placeholder",
+                "user_id": "demo-sig-ciso-office",
                 "display_name": "CISO Office",
                 "email": "ciso@nexatech.demo",
                 "status": "signed",
                 "signed_at": "2025-11-10T09:00:00Z",
             },
             {
-                "user_id": "demo-placeholder",
+                "user_id": "demo-sig-enterprise-architect",
                 "display_name": "Enterprise Architect",
                 "email": "ea@nexatech.demo",
                 "status": "signed",
@@ -4851,7 +4852,7 @@ DEMO_ADRS_EXTRA = [
         "related_decisions": ["ADR-001", "ADR-002"],
         "signatories": [
             {
-                "user_id": "demo-placeholder",
+                "user_id": "demo-sig-cto-office",
                 "display_name": "CTO Office",
                 "email": "cto@nexatech.demo",
                 "status": "signed",
@@ -4897,14 +4898,14 @@ DEMO_ADRS_EXTRA = [
         "related_decisions": ["ADR-001", "ADR-005"],
         "signatories": [
             {
-                "user_id": "demo-placeholder",
+                "user_id": "demo-sig-data-architecture-lead",
                 "display_name": "Data Architecture Lead",
                 "email": "data-arch@nexatech.demo",
                 "status": "pending",
                 "signed_at": None,
             },
             {
-                "user_id": "demo-placeholder",
+                "user_id": "demo-sig-enterprise-architect",
                 "display_name": "Enterprise Architect",
                 "email": "ea@nexatech.demo",
                 "status": "pending",
@@ -5281,14 +5282,14 @@ DEMO_SOAW_DTP = {
     "revision_number": 1,
     "signatories": [
         {
-            "user_id": "demo-placeholder",
+            "user_id": "demo-sig-cto-office",
             "display_name": "CTO Office",
             "email": "cto@nexatech.demo",
             "status": "signed",
             "signed_at": "2025-08-20T10:00:00Z",
         },
         {
-            "user_id": "demo-placeholder",
+            "user_id": "demo-sig-enterprise-architect",
             "display_name": "Enterprise Architect",
             "email": "ea@nexatech.demo",
             "status": "signed",
@@ -5473,14 +5474,14 @@ DEMO_SOAW_SAP = {
     "revision_number": 1,
     "signatories": [
         {
-            "user_id": "demo-placeholder",
+            "user_id": "demo-sig-enterprise-architect",
             "display_name": "Enterprise Architect",
             "email": "ea@nexatech.demo",
             "status": "pending",
             "signed_at": None,
         },
         {
-            "user_id": "demo-placeholder",
+            "user_id": "demo-sig-sap-solution-architect",
             "display_name": "SAP Solution Architect",
             "email": "sap-arch@nexatech.demo",
             "status": "pending",
@@ -5637,10 +5638,18 @@ def _compute_data_quality(d: dict, type_schemas: dict[str, list]) -> float:
     return round((filled_weight / total_weight) * 100, 1)
 
 
+SEEDER_KEY = "base"
+
+
 async def seed_demo_data(db: AsyncSession) -> dict:
     """Insert full demo dataset. Returns counts. Safe to re-run (skips if data exists)."""
+    if await demo_seed_completed(db, SEEDER_KEY):
+        return {"skipped": True, "reason": "already seeded"}
+
     result = await db.execute(select(Card.id).limit(1))
     if result.scalar_one_or_none() is not None:
+        await mark_demo_seed_completed(db, SEEDER_KEY)
+        await db.commit()
         return {"skipped": True, "reason": "cards already exist"}
 
     all_fs = (
@@ -5709,9 +5718,19 @@ async def seed_demo_data(db: AsyncSession) -> dict:
                 db.add(CardTag(card_id=_id(ref), tag_id=t["id"]))
     await db.flush()
 
+    # ADRs and SoAWs credit the first admin as creator when one exists
+    # (seeding on a fresh install runs before any user registers, so
+    # created_by stays NULL there — the FK only accepts real users).
+    from app.models.user import User
+
+    admin_result = await db.execute(select(User.id).where(User.role == "admin").limit(1))
+    admin_id = admin_result.scalar_one_or_none()
+
     # Insert demo Architecture Decision Records
     for adr_def in DEMO_ADRS + DEMO_ADRS_EXTRA:
         adr_data = {k: v for k, v in adr_def.items()}
+        if admin_id:
+            adr_data["created_by"] = admin_id
         db.add(ArchitectureDecision(**adr_data))
     await db.flush()
 
@@ -5724,12 +5743,7 @@ async def seed_demo_data(db: AsyncSession) -> dict:
         )
     await db.flush()
 
-    # Insert demo SoAW documents (need admin user for created_by)
-    from app.models.user import User
-
-    admin_result = await db.execute(select(User.id).where(User.role == "admin").limit(1))
-    admin_id = admin_result.scalar_one_or_none()
-
+    # Insert demo SoAW documents
     for soaw_def in DEMO_SOAWS:
         soaw_data = {k: v for k, v in soaw_def.items()}
         if admin_id:
@@ -5753,6 +5767,13 @@ async def seed_demo_data(db: AsyncSession) -> dict:
 
     await recompute_all_data_quality(db)
 
+    # Populate the built-in hierarchyLevel attribute for every hierarchical demo
+    # card (they were inserted with hand-set attrs, so the value is missing).
+    from app.services.hierarchy import backfill_hierarchy_levels
+
+    await backfill_hierarchy_levels(db)
+
+    await mark_demo_seed_completed(db, SEEDER_KEY)
     await db.commit()
     return {
         "cards": len(all_fs),

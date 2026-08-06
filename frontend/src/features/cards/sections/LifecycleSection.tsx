@@ -4,15 +4,16 @@ import Typography from "@mui/material/Typography";
 import Accordion from "@mui/material/Accordion";
 import AccordionSummary from "@mui/material/AccordionSummary";
 import AccordionDetails from "@mui/material/AccordionDetails";
-import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import { useTheme } from "@mui/material/styles";
 import { useTranslation } from "react-i18next";
+import { DateField } from "@/components/DateField";
 import MaterialSymbol from "@/components/MaterialSymbol";
 import { PHASE_ICONS } from "@/components/LifecycleBadge";
 import { PHASES, getPhaseLabels } from "@/features/cards/sections/cardDetailUtils";
 import { useDateFormat } from "@/hooks/useDateFormat";
+import { useSyncedExpanded } from "@/hooks/useSyncedExpanded";
 import type { Card } from "@/types";
 
 const PHASE_PALETTE: Record<string, string> = {
@@ -29,24 +30,39 @@ function LifecycleSection({
   onSave,
   canEdit = true,
   initialExpanded = true,
+  onDirtyChange,
 }: {
   card: Card;
   onSave: (u: Record<string, unknown>) => Promise<void>;
   canEdit?: boolean;
   initialExpanded?: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const { t } = useTranslation(["cards", "common"]);
   const theme = useTheme();
   const { formatDate } = useDateFormat();
   const phaseLabels = getPhaseLabels(t);
+  const [expanded, setExpanded] = useSyncedExpanded(initialExpanded);
   const [editing, setEditing] = useState(false);
   const [lifecycle, setLifecycle] = useState<Record<string, string>>(
     card.lifecycle || {}
   );
 
+  // Re-sync the draft from the card prop only while NOT editing, so saving
+  // another section (which replaces the whole card object in the parent) can't
+  // clobber this section's in-progress draft (issue #843).
   useEffect(() => {
-    setLifecycle(card.lifecycle || {});
-  }, [card.lifecycle]);
+    if (!editing) setLifecycle(card.lifecycle || {});
+  }, [card.lifecycle, editing]);
+
+  // Report unsaved-changes state up so the page can warn on navigation (#843).
+  const dirty =
+    editing &&
+    JSON.stringify(lifecycle) !== JSON.stringify(card.lifecycle || {});
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+    return () => onDirtyChange?.(false);
+  }, [dirty, onDirtyChange]);
 
   const save = async () => {
     await onSave({ lifecycle });
@@ -54,7 +70,7 @@ function LifecycleSection({
   };
 
   return (
-    <Accordion defaultExpanded={initialExpanded} disableGutters>
+    <Accordion expanded={expanded} onChange={(_, v) => setExpanded(v)} disableGutters>
       <AccordionSummary expandIcon={<MaterialSymbol icon="expand_more" size={20} />}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, flex: 1 }}>
           <MaterialSymbol icon="timeline" size={20} />
@@ -221,16 +237,14 @@ function LifecycleSection({
           <Box>
             <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mb: 2 }}>
               {PHASES.map((phase) => (
-                <TextField
+                <DateField
                   key={phase}
                   label={phaseLabels[phase]}
-                  type="date"
                   size="small"
                   value={lifecycle[phase] || ""}
-                  onChange={(e) =>
-                    setLifecycle({ ...lifecycle, [phase]: e.target.value })
+                  onChange={(v) =>
+                    setLifecycle({ ...lifecycle, [phase]: v })
                   }
-                  InputLabelProps={{ shrink: true }}
                   sx={{ width: 170 }}
                 />
               ))}

@@ -34,6 +34,15 @@ Cliccate su **+ Nuovo tipo** per creare un tipo di card personalizzato. Configur
 
 Cliccate su qualsiasi tipo per aprire il **Cassetto dettaglio tipo**. Qui potete configurare:
 
+#### Colore del tipo
+
+Ogni tipo di scheda — inclusi quelli predefiniti — ha un colore personalizzabile usato nell'inventario, nei report, nelle viste delle dipendenze e nei diagrammi. Questo consente di allineare Turbo EA alle convenzioni visive della propria organizzazione (ad esempio le palette TOGAF/ArchiMate: elementi di business in giallo/arancione, applicazioni in blu).
+
+- Scegliere un colore con il campione di colore nel pannello. Un avviso appare quando il colore scelto ha un contrasto molto basso su sfondi chiari o scuri.
+- I tipi predefiniti mostrano un pulsante di **ripristino** accanto al campione di colore quando il colore differisce dal valore predefinito di Turbo EA, così è sempre possibile tornare alla palette standard.
+- Il testo mostrato sopra i colori del tipo (chip, forme dei diagrammi) passa automaticamente dal nero al bianco per la leggibilità, sia in modalità chiara sia in modalità scura.
+- Il selettore mostra un'**anteprima dal vivo** accanto alla palette: nome del tipo, chip, icona della scheda, sottotipo, pillola dell'ID scheda e un nodo della vista delle dipendenze, resi una volta in modalità chiara e una in modalità scura, aggiornati durante la selezione.
+
 #### Campi
 
 I campi definiscono gli attributi personalizzati disponibili sulle card di questo tipo. Ogni campo ha:
@@ -60,6 +69,17 @@ I campi sono organizzati in **sezioni** nella pagina di dettaglio della card. Po
 - Riordinare i campi all'interno di una sezione trascinandoli e spostare un campo in un'altra sezione tramite la sua azione **sposta**
 
 Il nome speciale di sezione `__description` aggiunge campi alla sezione Descrizione della pagina di dettaglio della card.
+
+#### ID scheda
+
+Attiva la **generazione ID scheda** per assegnare alle schede di questo tipo un ID stabile e leggibile (ad esempio `APP-00001`). L'ID appare come pillola copiabile accanto al tipo della scheda, come colonna opzionale (ordinabile e filtrabile) nell'inventario, nelle esportazioni Excel e nelle formule dei campi calcolati (tramite `data.reference`).
+
+Il **numero è sempre generato automaticamente**; puoi controllare solo il **prefisso**. All'attivazione viene mostrato come testo un prefisso suggerito (derivato dal nome del tipo, es. `APP-`) — clicca la matita per modificarlo. Due impostazioni regolano il numero:
+
+- **Inizia da** — il primo numero della serie (predefinito `1`).
+- **Cifre min.** — larghezza del riempimento con zeri (predefinito `5`), così `1` diventa `00001`. È un minimo; i numeri si allungano una volta superato. Un **Esempio** mostra in tempo reale il primo ID.
+
+Gli ID sono **univoci a livello globale, di sola lettura e non vengono mai riutilizzati o modificati**. La sequenza numerica è tracciata **per prefisso in tutto il workspace**, quindi due tipi che condividono un prefisso formano un'unica serie continua e senza collisioni. Una volta che una scheda di questo tipo ha un ID, l'intero formato — prefisso, inizio e cifre min. — è bloccato (i campi diventano di sola lettura); puoi comunque disattivare la generazione. Il salvataggio non assegna mai ID alle schede esistenti; usa il pulsante dedicato **Genera ID** per colmare l'arretrato su richiesta (con barra di avanzamento e conferma).
 
 #### Punteggio di qualità dei dati
 
@@ -97,6 +117,15 @@ Quando nessun sottotipo è selezionato su una card (o il tipo non ha sottotipi),
 
 Definite ruoli personalizzati per questo tipo (es. "Application Owner", "Technical Owner"). Ogni ruolo porta **permessi a livello di card** che vengono combinati con il ruolo a livello di applicazione dell'utente quando accede a una card. Vedi [Utenti e ruoli](users.md) per maggiori informazioni sul modello dei permessi.
 
+Ogni ruolo ha una **chiave** (l'identificatore memorizzato sulle schede, usato dalle colonne di importazione/esportazione `stakeholder:<chiave_ruolo>`) e un'**etichetta** (ciò che vedono gli utenti). La chiave segue la stessa convenzione di ogni altra chiave del metamodello: solo lettere e cifre, con iniziale alfabetica, da 3 a 50 caratteri, per convenzione in camelCase come `businessArchitect`. Viene compilata automaticamente dall'etichetta, quindi raramente dovrai digitarla.
+
+I ruoli possono essere rimossi in due modi:
+
+- **Archivia** — il ruolo rimane sulle schede che già lo usano ma non può più essere assegnato e smette di concedere i permessi a livello di scheda. I ruoli archiviati compaiono dietro l'interruttore **Mostra archiviati** e possono essere ripristinati in qualsiasi momento. È la scelta giusta per un ruolo realmente utilizzato.
+- **Elimina** — permanente e offerto solo finché il ruolo non è utilizzato. Turbo EA rifiuta di eliminare un ruolo ricoperto da qualcuno su una scheda di questo tipo, utilizzato da un sondaggio, o che è l'ultimo ruolo attivo del tipo; la finestra di conferma indica il motivo e propone invece l'archiviazione. È così che si ripulisce un ruolo creato per errore.
+
+La chiave di un ruolo può essere corretta finché **nessuno ricopre il ruolo**: i sondaggi che lo utilizzano seguono automaticamente la rinomina, e rinominare l'unico ruolo di un tipo non è un problema perché il ruolo sopravvive. Appena qualcuno lo ricopre, la chiave viene bloccata e il campo ne spiega il motivo. I ruoli creati prima di questa convenzione mantengono la chiave che già avevano e continuano a funzionare; viene verificata solo una chiave nuova o modificata.
+
 #### Traduzioni
 
 Cliccate sul pulsante **Traduci** nella barra degli strumenti del drawer del tipo per aprire il **Dialogo delle traduzioni**. Qui potete fornire traduzioni per tutte le etichette del metamodello in ogni lingua supportata:
@@ -128,6 +157,10 @@ I tipi di relazione definiscono le connessioni consentite tra i tipi di card. Og
 | **Cardinalità** | n:m (molti-a-molti) o 1:n (uno-a-molti) |
 
 Cliccate su **+ Nuovo tipo di relazione** per creare una relazione, o cliccate su una esistente per modificare le etichette e gli attributi.
+
+I campi **Etichetta** ed **Etichetta inversa** vengono scritti nella lingua che state usando in quel momento — la didascalia del campo indica quale (ad esempio *Etichetta (Italiano)*). Rinominare una relazione aggiorna quella lingua ovunque compaia il verbo: la sezione **Relazioni** di una card, le colonne di relazione dell'inventario, i report, i portali e i diagrammi. Le altre lingue mantengono la propria formulazione finché non le traducete.
+
+Usate **Gestisci traduzioni** in cima alla scheda Tipi di relazione per tradurre i verbi di tutte le relazioni in ogni lingua abilitata in un'unica passata. Scegliete una scheda lingua, inserite la formulazione accanto all'originale inglese e salvate: il contatore su ogni scheda mostra quanti verbi mancano ancora in quella lingua. L'inglese non compare qui perché è la formulazione sulla relazione stessa; un verbo non tradotto vi ricade.
 
 ### Attributi della relazione
 
@@ -219,7 +252,7 @@ Lo scanner di conformità e il flusso di promozione a Rischio funzionano **anche
 
 Per ogni tipo di card, la sezione **Layout** nel cassetto del tipo controlla come è strutturata la pagina di dettaglio della card:
 
-- **Ordine delle sezioni** — Trascinate le sezioni (Descrizione, EOL, Ciclo di vita, Gerarchia, Relazioni e sezioni personalizzate) per riordinarle
+- **Ordine delle sezioni** — Trascinate le sezioni (Descrizione, EOL, Ciclo di vita, Gerarchia, Tag, Relazioni e sezioni personalizzate) per riordinarle
 - **Visibilità** — Nascondete le sezioni che non sono rilevanti per un tipo
 - **Espansione predefinita** — Scegliete se ogni sezione inizia espansa o compressa
 - **Layout colonne** — Impostate 1 o 2 colonne per sezione personalizzata

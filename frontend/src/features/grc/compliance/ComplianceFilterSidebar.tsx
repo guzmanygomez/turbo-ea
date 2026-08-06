@@ -3,11 +3,15 @@
  *
  * Follows the Inventory sidebar pattern exactly:
  *  - 44 px collapsed rail (left, ``borderRight``, ``action.hover`` bg)
- *  - Expanded sidebar with ``SectionHeader`` + ``Collapse`` per filter
- *    family
+ *  - Expanded sidebar with ``FilterSectionHeader`` + ``Collapse`` per
+ *    filter family
  *  - List + Checkbox rows (not Chips) — a tiny coloured dot before the
  *    label keeps the semantic colour visible without confusing the
  *    "selected vs unselected" affordance.
+ *
+ * The header + list primitives are shared with the Risk Register sidebar
+ * via ``components/FilterSidebarSection`` so the GRC panels stay visually
+ * identical.
  *
  * Filter families: Compliance Status / Severity / Lifecycle / Card type /
  * Other (AI-only, Include resolved).
@@ -16,20 +20,20 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import Checkbox from "@mui/material/Checkbox";
 import Chip from "@mui/material/Chip";
 import Collapse from "@mui/material/Collapse";
 import IconButton from "@mui/material/IconButton";
-import List from "@mui/material/List";
-import ListItemButton from "@mui/material/ListItemButton";
-import ListItemIcon from "@mui/material/ListItemIcon";
-import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import MaterialSymbol from "@/components/MaterialSymbol";
+import {
+  FilterCheckboxList,
+  FilterSectionHeader,
+} from "@/components/FilterSidebarSection";
+import { useMetamodel } from "@/hooks/useMetamodel";
 import {
   CARD_TYPE_COLORS,
   COMPLIANCE_LIFECYCLE_COLORS,
@@ -80,6 +84,9 @@ interface Props {
   /** Visible column ids; columns not in this set are hidden. */
   visibleColumns: Set<string>;
   onVisibleColumnsChange: (next: Set<string>) => void;
+  /** colIds frozen to the leading edge; the pin on each row toggles one. */
+  frozenColumns: Set<string>;
+  onToggleFrozen: (colId: string) => void;
   /** Reset visible columns to the default (all columns). */
   onResetColumns?: () => void;
   width?: number;
@@ -132,11 +139,6 @@ const SEVERITY_HEX: Record<TurboLensComplianceFinding["severity"], string> = {
   info: STATUS_COLORS.info,
 };
 
-const CARD_TYPE_HEX: Record<"Application" | "ITComponent", string> = {
-  Application: CARD_TYPE_COLORS.Application,
-  ITComponent: CARD_TYPE_COLORS.ITComponent,
-};
-
 const CARD_TYPE_ICONS: Record<"Application" | "ITComponent", string> = {
   Application: "apps",
   ITComponent: "memory",
@@ -149,11 +151,17 @@ export default function ComplianceFilterSidebar({
   onToggleCollapsed,
   visibleColumns,
   onVisibleColumnsChange,
+  frozenColumns,
+  onToggleFrozen,
   onResetColumns,
   width = DEFAULT_WIDTH,
 }: Props) {
   const { t } = useTranslation("admin");
   const { t: tCards } = useTranslation("cards");
+  const { getType } = useMetamodel();
+  // Metamodel color (admin-editable) first, static token as fallback.
+  const cardTypeColor = (ct: "Application" | "ITComponent") =>
+    getType(ct)?.color || CARD_TYPE_COLORS[ct];
 
   const [tab, setTab] = useState<0 | 1>(0);
   const [expanded, setExpanded] = useState({
@@ -310,7 +318,7 @@ export default function ComplianceFilterSidebar({
       <Box sx={{ flex: 1, overflow: "auto", p: 1 }}>
       {tab === 0 ? (
         <>
-        <SectionHeader
+        <FilterSectionHeader
           label={t("compliance_filter_status")}
           icon="verified"
           expanded={expanded.status}
@@ -318,7 +326,7 @@ export default function ComplianceFilterSidebar({
           count={STATUSES.length - filters.statuses.size}
         />
         <Collapse in={expanded.status}>
-          <CheckboxList
+          <FilterCheckboxList
             items={STATUSES.map((s) => ({
               key: s,
               label: t(`compliance_status_${s}`),
@@ -330,7 +338,7 @@ export default function ComplianceFilterSidebar({
           />
         </Collapse>
 
-        <SectionHeader
+        <FilterSectionHeader
           label={t("compliance_filter_severity")}
           icon="flag"
           expanded={expanded.severity}
@@ -338,7 +346,7 @@ export default function ComplianceFilterSidebar({
           count={SEVERITIES.length - filters.severities.size}
         />
         <Collapse in={expanded.severity}>
-          <CheckboxList
+          <FilterCheckboxList
             items={SEVERITIES.map((s) => ({
               key: s,
               label: t(`compliance_severity_${s}`),
@@ -353,7 +361,7 @@ export default function ComplianceFilterSidebar({
           />
         </Collapse>
 
-        <SectionHeader
+        <FilterSectionHeader
           label={tCards("compliance.filters.lifecycle")}
           icon="route"
           expanded={expanded.lifecycle}
@@ -361,7 +369,7 @@ export default function ComplianceFilterSidebar({
           count={LIFECYCLE_STATES.length - filters.decisions.size}
         />
         <Collapse in={expanded.lifecycle}>
-          <CheckboxList
+          <FilterCheckboxList
             items={LIFECYCLE_STATES.map((d) => ({
               key: d,
               label: t(`compliance_decision_${d}`),
@@ -376,7 +384,7 @@ export default function ComplianceFilterSidebar({
           />
         </Collapse>
 
-        <SectionHeader
+        <FilterSectionHeader
           label={tCards("compliance.filters.cardType")}
           icon="category"
           expanded={expanded.cardType}
@@ -384,11 +392,11 @@ export default function ComplianceFilterSidebar({
           count={CARD_TYPES.length - filters.cardTypes.size}
         />
         <Collapse in={expanded.cardType}>
-          <CheckboxList
+          <FilterCheckboxList
             items={CARD_TYPES.map((ct) => ({
               key: ct,
               label: ct,
-              color: CARD_TYPE_HEX[ct],
+              color: cardTypeColor(ct),
               icon: CARD_TYPE_ICONS[ct],
               checked: filters.cardTypes.has(ct),
               onToggle: () =>
@@ -400,7 +408,7 @@ export default function ComplianceFilterSidebar({
           />
         </Collapse>
 
-        <SectionHeader
+        <FilterSectionHeader
           label={tCards("compliance.filters.other")}
           icon="tune"
           expanded={expanded.other}
@@ -412,7 +420,7 @@ export default function ComplianceFilterSidebar({
           }
         />
         <Collapse in={expanded.other}>
-          <CheckboxList
+          <FilterCheckboxList
             items={[
               {
                 key: "ai_only",
@@ -467,123 +475,21 @@ export default function ComplianceFilterSidebar({
               </Button>
             )}
           </Stack>
-          <CheckboxList
+          <FilterCheckboxList
             items={COMPLIANCE_GRID_COLUMNS.map((c) => ({
               key: c.id,
               label: tCards(c.labelKey),
               checked: visibleColumns.has(c.id),
               onToggle: () => toggleColumn(c.id),
               disabled: LOCKED_COMPLIANCE_COLUMNS.has(c.id),
+              frozen: frozenColumns.has(c.id),
+              onToggleFrozen: () => onToggleFrozen(c.id),
             }))}
           />
         </Box>
       )}
       </Box>
     </Box>
-  );
-}
-
-/* ─── helpers ───────────────────────────────────────────────────────── */
-
-function SectionHeader({
-  label,
-  icon,
-  expanded,
-  onToggle,
-  count,
-}: {
-  label: string;
-  icon: string;
-  expanded: boolean;
-  onToggle: () => void;
-  count?: number;
-}) {
-  return (
-    <Box
-      onClick={onToggle}
-      sx={{
-        display: "flex",
-        alignItems: "center",
-        gap: 0.75,
-        py: 0.5,
-        px: 0.5,
-        cursor: "pointer",
-        borderRadius: 1,
-        userSelect: "none",
-        "&:hover": { bgcolor: "action.hover" },
-      }}
-    >
-      <MaterialSymbol icon={expanded ? "expand_more" : "chevron_right"} size={16} />
-      <MaterialSymbol icon={icon} size={16} />
-      <Typography variant="body2" fontWeight={600} fontSize={13} sx={{ flex: 1 }}>
-        {label}
-      </Typography>
-      {count != null && count > 0 && (
-        <Chip
-          label={count}
-          size="small"
-          color="primary"
-          sx={{ height: 18, fontSize: 11 }}
-        />
-      )}
-    </Box>
-  );
-}
-
-interface CheckboxItem {
-  key: string;
-  label: string;
-  checked: boolean;
-  onToggle: () => void;
-  color?: string;
-  icon?: string;
-  disabled?: boolean;
-}
-
-function CheckboxList({ items }: { items: CheckboxItem[] }) {
-  return (
-    <List dense disablePadding sx={{ mb: 1 }}>
-      {items.map((item) => (
-        <ListItemButton
-          key={item.key}
-          dense
-          disabled={item.disabled}
-          onClick={item.onToggle}
-          sx={{ py: 0.25, px: 1, borderRadius: 1 }}
-        >
-          <ListItemIcon sx={{ minWidth: 28 }}>
-            <Checkbox
-              size="small"
-              checked={item.checked}
-              disabled={item.disabled}
-              disableRipple
-              sx={{ p: 0 }}
-            />
-          </ListItemIcon>
-          {item.icon ? (
-            <MaterialSymbol icon={item.icon} size={14} color={item.color} />
-          ) : item.color ? (
-            <Box
-              sx={{
-                width: 10,
-                height: 10,
-                borderRadius: "50%",
-                bgcolor: item.color,
-                flexShrink: 0,
-              }}
-            />
-          ) : null}
-          <ListItemText
-            primary={item.label}
-            primaryTypographyProps={{
-              fontSize: 13,
-              ml: 0.75,
-              noWrap: true,
-            }}
-          />
-        </ListItemButton>
-      ))}
-    </List>
   );
 }
 

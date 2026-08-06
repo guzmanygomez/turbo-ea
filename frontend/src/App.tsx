@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router";
 import CssBaseline from "@mui/material/CssBaseline";
 import { ThemeProvider } from "@mui/material/styles";
 import { CacheProvider } from "@emotion/react";
@@ -56,10 +56,13 @@ const DashboardBuilder = lazy(() => import("@/features/admin/DashboardBuilder"))
 const UsersAdmin = lazy(() => import("@/features/admin/UsersAdmin"));
 const SettingsAdmin = lazy(() => import("@/features/admin/SettingsAdmin"));
 const SurveysAdmin = lazy(() => import("@/features/admin/SurveysAdmin"));
+const ExtensionsAdmin = lazy(() => import("@/features/admin/ExtensionsAdmin"));
+const ExtensionRoutesOutlet = lazy(() => import("@/lib/ExtensionRoutesOutlet"));
 const SurveyBuilder = lazy(() => import("@/features/admin/SurveyBuilder"));
 const SurveyResults = lazy(() => import("@/features/admin/SurveyResults"));
 const SurveyRespond = lazy(() => import("@/features/surveys/SurveyRespond"));
 const PortalViewer = lazy(() => import("@/features/web-portals/PortalViewer"));
+const PublicDiagramPage = lazy(() => import("@/features/diagrams/PublicDiagramPage"));
 const BpmDashboard = lazy(() => import("@/features/bpm/BpmDashboard"));
 const ProcessFlowEditorPage = lazy(() => import("@/features/bpm/ProcessFlowEditorPage"));
 const PpmHome = lazy(() => import("@/features/ppm/PpmHome"));
@@ -121,7 +124,8 @@ function AppRoutes() {
       <Routes>
         {/* Public portal route — accessible without login */}
         <Route path="/portal/:slug" element={<Suspense fallback={<PageLoader />}><PortalViewer /></Suspense>} />
-        {/* SSO callback route */}
+        <Route path="/embed/diagram/:slug" element={<Suspense fallback={<PageLoader />}><PublicDiagramPage /></Suspense>} />
+        {/* SSO callback route — shared by user login and SSO-gated portals */}
         <Route path="/auth/callback" element={<SsoCallback onSsoCallback={ssoCallback} />} />
         {/* Password setup route (for invited users) */}
         <Route path="/auth/set-password" element={<SetPasswordPage onSetPassword={setPassword} />} />
@@ -144,6 +148,10 @@ function AppRoutes() {
     <Routes>
       {/* Public portal route — also accessible when logged in */}
       <Route path="/portal/:slug" element={<Suspense fallback={<PageLoader />}><PortalViewer /></Suspense>} />
+        <Route path="/embed/diagram/:slug" element={<Suspense fallback={<PageLoader />}><PublicDiagramPage /></Suspense>} />
+      {/* SSO callback — reachable while logged in too, so an admin previewing an
+          SSO portal completes the portal sign-in on the same shared route. */}
+      <Route path="/auth/callback" element={<SsoCallback onSsoCallback={ssoCallback} />} />
       {/* Authenticated routes */}
       <Route
         path="*"
@@ -197,6 +205,8 @@ function AppRoutes() {
                 <Route path="/admin/eol" element={<RequirePermission permission="eol.manage"><Navigate to="/admin/settings?tab=eol" /></RequirePermission>} />
                 <Route path="/admin/web-portals" element={<RequirePermission permission="web_portals.manage"><Navigate to="/admin/settings?tab=web-portals" /></RequirePermission>} />
                 <Route path="/admin/servicenow" element={<RequirePermission permission="servicenow.manage"><Navigate to="/admin/settings?tab=servicenow" /></RequirePermission>} />
+                <Route path="/admin/extensions" element={<RequirePermission permission="admin.manage_extensions"><ExtensionsAdmin /></RequirePermission>} />
+                <Route path="/ext/*" element={<ExtensionRoutesOutlet />} />
                 <Route path="/admin/surveys" element={<RequirePermission permission="surveys.manage"><SurveysAdmin /></RequirePermission>} />
                 <Route path="/admin/surveys/new" element={<RequirePermission permission="surveys.manage"><SurveyBuilder /></RequirePermission>} />
                 <Route path="/admin/surveys/:id/results" element={<RequirePermission permission="surveys.manage"><SurveyResults /></RequirePermission>} />

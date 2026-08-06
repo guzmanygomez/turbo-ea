@@ -10,9 +10,11 @@ import {
   useMemo,
   useCallback,
   useRef,
+  lazy,
+  Suspense,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import TextField from "@mui/material/TextField";
@@ -41,12 +43,23 @@ import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Skeleton from "@mui/material/Skeleton";
 import Autocomplete from "@mui/material/Autocomplete";
 import Checkbox from "@mui/material/Checkbox";
+import Dialog from "@mui/material/Dialog";
+import DialogContent from "@mui/material/DialogContent";
+import AppBar from "@mui/material/AppBar";
+import Toolbar from "@mui/material/Toolbar";
+import Button from "@mui/material/Button";
 import DOMPurify from "dompurify";
 import MaterialSymbol from "@/components/MaterialSymbol";
 import { api } from "@/api/client";
 import { useMetamodel } from "@/hooks/useMetamodel";
 import { useSubtypeLabel } from "@/hooks/useResolveLabel";
 import { useAuth } from "@/hooks/useAuth";
+import { useProcessTypeOptions } from "./useProcessTypeOptions";
+import type { ProcessTypeOption } from "./useProcessTypeOptions";
+import type { ProcessElement, ProcessFlowVersion } from "@/types";
+import { readableTextColor } from "@/lib/color";
+
+const LazyBpmnViewer = lazy(() => import("./BpmnViewer"));
 
 /* ================================================================== */
 /*  Types                                                              */
@@ -113,6 +126,7 @@ interface ProcessElementData {
   data_object_name?: string;
   it_component_id?: string;
   it_component_name?: string;
+  organizations?: { id: string; name: string }[];
   custom_fields?: Record<string, unknown>;
 }
 
@@ -130,12 +144,12 @@ const OVERLAY_OPTIONS: { key: ColorOverlay; labelKey: string; icon: string }[] =
   { key: "riskLevel", labelKey: "navigator.overlayRisk", icon: "warning" },
 ];
 
-const ATTR_COLORS: Record<string, Record<string, { label: string; color: string }>> = {
-  processType: {
-    core: { label: "Core", color: "#1565c0" },
-    support: { label: "Support", color: "#7b1fa2" },
-    management: { label: "Management", color: "#00695c" },
-  },
+// Exported for the issue #762 regression test (key parity with the seeded
+// automationLevel options); it is a plain constant, not a component.
+// processType is deliberately absent: its labels/colors are admin-editable
+// metamodel data, resolved via useProcessTypeOptions (issue #857).
+// eslint-disable-next-line react-refresh/only-export-components
+export const ATTR_COLORS: Record<string, Record<string, { label: string; color: string }>> = {
   maturity: {
     initial: { label: "1-Initial", color: "#d32f2f" },
     managed: { label: "2-Managed", color: "#f57c00" },
@@ -145,8 +159,8 @@ const ATTR_COLORS: Record<string, Record<string, { label: string; color: string 
   },
   automationLevel: {
     manual: { label: "Manual", color: "#d32f2f" },
-    partially: { label: "Partial", color: "#f57c00" },
-    fully: { label: "Fully Auto", color: "#2e7d32" },
+    partiallyAutomated: { label: "Partial", color: "#f57c00" },
+    fullyAutomated: { label: "Fully Auto", color: "#2e7d32" },
   },
   riskLevel: {
     low: { label: "Low", color: "#66bb6a" },
@@ -154,17 +168,6 @@ const ATTR_COLORS: Record<string, Record<string, { label: string; color: string 
     high: { label: "High", color: "#f57c00" },
     critical: { label: "Critical", color: "#d32f2f" },
   },
-};
-
-const PROCESS_TYPE_ROW_LABEL_KEYS: Record<string, string> = {
-  management: "navigator.managementProcesses",
-  core: "navigator.coreProcesses",
-  support: "navigator.supportProcesses",
-};
-const PROCESS_TYPE_ROW_COLORS: Record<string, string> = {
-  management: "#00695c",
-  core: "#1565c0",
-  support: "#7b1fa2",
 };
 
 const ELEMENT_TYPE_ICONS: Record<string, { icon: string; color: string }> = {
@@ -304,9 +307,14 @@ function flatCollect(nodes: ProcNode[]): ProcNode[] {
   return result;
 }
 
-function getCardColor(node: ProcNode, overlay: ColorOverlay): string {
+function getCardColor(
+  node: ProcNode,
+  overlay: ColorOverlay,
+  resolveProcessType: (key: string | null | undefined) => ProcessTypeOption,
+): string {
   const val = (node.attributes || {})[overlay] as string | undefined;
   if (!val) return "#bdbdbd";
+  if (overlay === "processType") return resolveProcessType(val).color;
   return ATTR_COLORS[overlay]?.[val]?.color ?? "#bdbdbd";
 }
 
@@ -321,8 +329,10 @@ function HouseCard({
   search,
   isAdmin,
   rowType,
+  inProcessRow,
   onOpen,
   onDrill,
+  onViewFlow,
   dragRef,
   onDragDrop,
 }: {
@@ -332,15 +342,19 @@ function HouseCard({
   search: string;
   isAdmin?: boolean;
   rowType?: string;
+  /** True when rowType is a process-type row key (not a parent card UUID). */
+  inProcessRow?: boolean;
   onOpen: (n: ProcNode) => void;
   onDrill: (id: string) => void;
+  onViewFlow: (n: ProcNode) => void;
   dragRef?: React.MutableRefObject<{ id: string; rowType: string } | null>;
   onDragDrop?: (dragId: string, dropId: string, rowType: string) => void;
 }) {
   const { t } = useTranslation(["bpm", "common"]);
   const stLabel = useSubtypeLabel();
   const { getType } = useMetamodel();
-  const color = getCardColor(node, overlay);
+  const { resolve: resolveProcessType } = useProcessTypeOptions();
+  const color = getCardColor(node, overlay, resolveProcessType);
   const isLeaf = node.level >= displayLevel || node.children.length === 0;
   const childCount = node.children.length;
   const hasElements = (node.element_count ?? 0) > 0;
@@ -354,8 +368,8 @@ function HouseCard({
     !search || node.name.toLowerCase().includes(search.toLowerCase());
   const opacity = search && !matchesSearch ? 0.3 : 1;
 
-  // A card is nested if rowType is a parent UUID (not a process-type row name)
-  const isNested = rowType ? !["management", "core", "support"].includes(rowType) : false;
+  // A card is nested if rowType is a parent UUID (not a process-type row key)
+  const isNested = rowType ? !inProcessRow : false;
   const canDrag = isAdmin && dragRef && onDragDrop && rowType;
   const dragHandleActive = useRef(false);
   const [hovered, setHovered] = useState(false);
@@ -454,6 +468,7 @@ function HouseCard({
               fontWeight: 600,
               fontSize: "0.82rem",
               flex: 1,
+              minWidth: 0,
               lineHeight: 1.3,
               display: "-webkit-box",
               WebkitLineClamp: 2,
@@ -463,11 +478,6 @@ function HouseCard({
           >
             {node.name}
           </Typography>
-          {subtypeLabel && (
-            <Typography variant="caption" sx={{ opacity: 0.85, fontSize: "0.6rem", flexShrink: 0, ml: 0.5 }}>
-              {subtypeLabel}
-            </Typography>
-          )}
         </Box>
 
         {/* Footer badges */}
@@ -483,13 +493,18 @@ function HouseCard({
             borderColor: "divider",
           }}
         >
+          {subtypeLabel && (
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.6rem", flexShrink: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {subtypeLabel}
+            </Typography>
+          )}
           {node.deepAppCount > 0 && (
             <Tooltip title={t("navigator.applicationCount", { count: node.deepAppCount })}>
               <Chip
                 size="small"
                 icon={<MaterialSymbol icon="apps" size={12} />}
                 label={node.deepAppCount}
-                sx={{ height: 20, fontSize: "0.65rem", bgcolor: "action.hover" }}
+                sx={{ height: 20, fontSize: "0.65rem", bgcolor: "action.hover", flexShrink: 0 }}
               />
             </Tooltip>
           )}
@@ -499,13 +514,37 @@ function HouseCard({
                 size="small"
                 icon={<MaterialSymbol icon="checklist" size={12} />}
                 label={node.element_count}
-                sx={{ height: 20, fontSize: "0.65rem", bgcolor: "action.hover" }}
+                sx={{ height: 20, fontSize: "0.65rem", bgcolor: "action.hover", flexShrink: 0 }}
               />
             </Tooltip>
           )}
           {hasDiagram && (
-            <Tooltip title={t("navigator.hasBpmnDiagram")}>
-              <Box sx={{ display: "flex", alignItems: "center" }}>
+            <Tooltip title={t("navigator.viewFlow")}>
+              <Box
+                role="button"
+                tabIndex={0}
+                aria-label={t("navigator.viewFlow")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onViewFlow(node);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onViewFlow(node);
+                  }
+                }}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  flexShrink: 0,
+                  cursor: "pointer",
+                  borderRadius: 1,
+                  p: 0.25,
+                  "&:hover": { bgcolor: "action.hover" },
+                }}
+              >
                 <MaterialSymbol icon="schema" size={14} color="#7b1fa2" />
               </Box>
             </Tooltip>
@@ -527,6 +566,7 @@ function HouseCard({
                   bgcolor: color,
                   color: "#fff",
                   cursor: "pointer",
+                  flexShrink: 0,
                   "&:hover": { opacity: 0.85 },
                 }}
               />
@@ -587,7 +627,7 @@ function HouseCard({
           bgcolor: color,
           color: "#fff",
           display: "flex",
-          alignItems: "center",
+          flexDirection: "column",
           gap: 0.5,
           cursor: "pointer",
           "&:hover": { opacity: 0.9 },
@@ -598,83 +638,128 @@ function HouseCard({
           if (e.key === "Enter") onOpen(node);
         }}
       >
-        {nestedDrag && (
-          <Box
-            onMouseDown={() => { dragHandleActive.current = true; }}
-            onMouseUp={() => { dragHandleActive.current = false; }}
-            sx={{
-              opacity: 0.5,
-              transition: "opacity 0.15s",
-              cursor: "grab",
-              flexShrink: 0,
-              display: "flex",
-              alignItems: "center",
-              p: 0.25,
-              ml: -0.5,
-              borderRadius: 0.5,
-              zIndex: 2,
-              position: "relative",
-              bgcolor: "rgba(255,255,255,0.25)",
-              "&:hover": { opacity: 1, bgcolor: "rgba(255,255,255,0.5)" },
-              "&:active": { cursor: "grabbing" },
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <MaterialSymbol icon="drag_indicator" size={16} />
-          </Box>
-        )}
-        <Typography
-          variant="body2"
-          sx={{ fontWeight: 700, fontSize: "0.82rem", flex: 1, lineHeight: 1.3 }}
-        >
-          {node.name}
-        </Typography>
-        {subtypeLabel && (
-          <Typography variant="caption" sx={{ opacity: 0.85, fontSize: "0.6rem", flexShrink: 0, ml: 0.5 }}>
-            {subtypeLabel}
-          </Typography>
-        )}
-        {(hasDiagram || hasElements) && (
-          <Tooltip title={hasDiagram ? t("navigator.hasProcessFlow", { count: node.element_count ?? 0 }) : t("navigator.bpmnElementCount", { count: node.element_count })}>
-            <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.25, ml: 0.25, opacity: 0.85 }}>
-              <MaterialSymbol icon="schema" size={16} />
-              {hasElements && (
-                <Typography variant="caption" sx={{ fontSize: "0.6rem", color: "#fff", fontWeight: 600, lineHeight: 1 }}>
-                  {node.element_count}
-                </Typography>
-              )}
-            </Box>
-          </Tooltip>
-        )}
-        <Chip
-          size="small"
-          label={childCount}
-          sx={{
-            height: 20,
-            fontSize: "0.65rem",
-            fontWeight: 600,
-            bgcolor: "rgba(255,255,255,0.25)",
-            color: "#fff",
-            ml: 0.5,
-          }}
-        />
-        {!isNested && (
-          <Tooltip title={t("navigator.drillDown")}>
-            <IconButton
-              size="small"
-              onClick={(e) => { e.stopPropagation(); onDrill(node.id); }}
+        {/* Title row — the name gets the full width */}
+        <Box sx={{ display: "flex", alignItems: "flex-start", gap: 0.5 }}>
+          {nestedDrag && (
+            <Box
+              onMouseDown={() => { dragHandleActive.current = true; }}
+              onMouseUp={() => { dragHandleActive.current = false; }}
               sx={{
+                opacity: 0.5,
+                transition: "opacity 0.15s",
+                cursor: "grab",
+                flexShrink: 0,
+                display: "flex",
+                alignItems: "center",
                 p: 0.25,
-                ml: 0.25,
-                color: "#fff",
-                opacity: 0.7,
-                "&:hover": { opacity: 1, bgcolor: "rgba(255,255,255,0.2)" },
+                ml: -0.5,
+                borderRadius: 0.5,
+                zIndex: 2,
+                position: "relative",
+                bgcolor: "rgba(255,255,255,0.25)",
+                "&:hover": { opacity: 1, bgcolor: "rgba(255,255,255,0.5)" },
+                "&:active": { cursor: "grabbing" },
               }}
+              onClick={(e) => e.stopPropagation()}
             >
-              <MaterialSymbol icon="zoom_in" size={18} />
-            </IconButton>
+              <MaterialSymbol icon="drag_indicator" size={16} />
+            </Box>
+          )}
+          <Typography
+            variant="body2"
+            sx={{
+              fontWeight: 700,
+              fontSize: "0.82rem",
+              flex: 1,
+              minWidth: 0,
+              lineHeight: 1.3,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {node.name}
+          </Typography>
+        </Box>
+        {/* Meta row — subtype label, counts, and the drill affordance */}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, minHeight: 20 }}>
+          {subtypeLabel && (
+            <Typography variant="caption" sx={{ opacity: 0.85, fontSize: "0.6rem", flexShrink: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {subtypeLabel}
+            </Typography>
+          )}
+          <Box sx={{ flex: 1 }} />
+          {(hasDiagram || hasElements) && (
+            <Tooltip title={hasDiagram ? t("navigator.viewFlow") : t("navigator.bpmnElementCount", { count: node.element_count })}>
+              <Box
+                role={hasDiagram ? "button" : undefined}
+                tabIndex={hasDiagram ? 0 : undefined}
+                aria-label={hasDiagram ? t("navigator.viewFlow") : undefined}
+                onClick={hasDiagram ? (e) => {
+                  e.stopPropagation();
+                  onViewFlow(node);
+                } : undefined}
+                onKeyDown={hasDiagram ? (e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onViewFlow(node);
+                  }
+                } : undefined}
+                sx={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 0.25,
+                  opacity: 0.85,
+                  flexShrink: 0,
+                  borderRadius: 1,
+                  p: 0.25,
+                  cursor: hasDiagram ? "pointer" : "default",
+                  ...(hasDiagram && { "&:hover": { bgcolor: "rgba(255,255,255,0.2)", opacity: 1 } }),
+                }}
+              >
+                <MaterialSymbol icon="schema" size={16} />
+                {hasElements && (
+                  <Typography variant="caption" sx={{ fontSize: "0.6rem", color: "#fff", fontWeight: 600, lineHeight: 1 }}>
+                    {node.element_count}
+                  </Typography>
+                )}
+              </Box>
+            </Tooltip>
+          )}
+          <Tooltip title={t("navigator.subProcessDrillDown", { count: childCount })}>
+            <Chip
+              size="small"
+              label={childCount}
+              sx={{
+                height: 20,
+                fontSize: "0.65rem",
+                fontWeight: 600,
+                bgcolor: "rgba(255,255,255,0.25)",
+                color: "#fff",
+                flexShrink: 0,
+              }}
+            />
           </Tooltip>
-        )}
+          {!isNested && (
+            <Tooltip title={t("navigator.drillDown")}>
+              <IconButton
+                size="small"
+                onClick={(e) => { e.stopPropagation(); onDrill(node.id); }}
+                sx={{
+                  p: 0.25,
+                  color: "#fff",
+                  opacity: 0.7,
+                  flexShrink: 0,
+                  "&:hover": { opacity: 1, bgcolor: "rgba(255,255,255,0.2)" },
+                }}
+              >
+                <MaterialSymbol icon="zoom_in" size={18} />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Box>
       </Box>
       <Box sx={{ p: 0.75, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 0.75, bgcolor: "rgba(0,0,0,0.02)" }}>
         {node.children.map((ch) => (
@@ -688,6 +773,7 @@ function HouseCard({
               rowType={node.id}
               onOpen={onOpen}
               onDrill={onDrill}
+              onViewFlow={onViewFlow}
               dragRef={dragRef}
               onDragDrop={onDragDrop}
             />
@@ -718,6 +804,7 @@ function DrawerOverview({
   const { t } = useTranslation(["bpm", "common"]);
   const stLabel = useSubtypeLabel();
   const { getType } = useMetamodel();
+  const { resolve: resolveProcessType } = useProcessTypeOptions();
   const [card, setCard] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -734,7 +821,14 @@ function DrawerOverview({
   const attrChips: { label: string; color: string }[] = [];
   for (const opt of OVERLAY_OPTIONS) {
     const val = (node.attributes || {})[opt.key] as string | undefined;
-    const info = val ? ATTR_COLORS[opt.key]?.[val] : null;
+    const info =
+      opt.key === "processType"
+        ? val
+          ? resolveProcessType(val)
+          : null
+        : val
+          ? ATTR_COLORS[opt.key]?.[val]
+          : null;
     if (info) attrChips.push({ label: `${t(opt.labelKey)}: ${info.label}`, color: info.color });
   }
   const bpType = getType("BusinessProcess");
@@ -750,7 +844,7 @@ function DrawerOverview({
             <Chip size="small" label={drawerSubtypeLabel} variant="outlined" />
           )}
           {attrChips.map((c) => (
-            <Chip key={c.label} size="small" label={c.label} sx={{ bgcolor: c.color, color: "#fff" }} />
+            <Chip key={c.label} size="small" label={c.label} sx={{ bgcolor: c.color, color: readableTextColor(c.color) }} />
           ))}
         </Box>
       )}
@@ -894,7 +988,7 @@ function DrawerOverview({
                   px: 1.5,
                   py: 0.75,
                   borderRadius: 1,
-                  bgcolor: getCardColor(ch, overlay),
+                  bgcolor: getCardColor(ch, overlay, resolveProcessType),
                   color: "#fff",
                   cursor: "pointer",
                   "&:hover": { boxShadow: 2 },
@@ -939,7 +1033,7 @@ function DrawerOverview({
                   key={tag.id}
                   size="small"
                   label={tag.name}
-                  sx={tag.color ? { bgcolor: tag.color, color: "#fff" } : {}}
+                  sx={tag.color ? { bgcolor: tag.color, color: readableTextColor(tag.color) } : {}}
                   variant={tag.color ? "filled" : "outlined"}
                 />
               ))}
@@ -1124,6 +1218,22 @@ function DrawerSteps({
                             }}
                           />
                         )}
+                        {(el.organizations || []).map((org) => (
+                          <Chip
+                            key={org.id}
+                            size="small"
+                            icon={<MaterialSymbol icon="corporate_fare" size={12} />}
+                            label={org.name}
+                            onClick={() => onNavigate(org.id)}
+                            sx={{
+                              height: 20,
+                              fontSize: "0.65rem",
+                              cursor: "pointer",
+                              bgcolor: "action.hover",
+                              "&:hover": { bgcolor: "action.selected" },
+                            }}
+                          />
+                        ))}
                       </Box>
                     </Box>
                   </Box>
@@ -1282,6 +1392,114 @@ function DrawerFlow({
         />
       </Box>
     </Box>
+  );
+}
+
+/* ================================================================== */
+/*  Fullscreen Flow Preview Dialog                                     */
+/* ================================================================== */
+
+function FlowPreviewDialog({
+  node,
+  onClose,
+  onNavigate,
+}: {
+  node: ProcNode;
+  onClose: () => void;
+  onNavigate: (path: string) => void;
+}) {
+  const { t } = useTranslation(["bpm", "common"]);
+  const [loading, setLoading] = useState(true);
+  const [bpmnXml, setBpmnXml] = useState<string | null>(null);
+  const [elements, setElements] = useState<ProcessElement[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setBpmnXml(null);
+    setElements([]);
+    Promise.all([
+      api
+        .get<ProcessFlowVersion | null>(`/bpm/processes/${node.id}/flow/published`)
+        .catch(() => null),
+      api
+        .get<ProcessElement[]>(`/bpm/processes/${node.id}/elements`)
+        .catch(() => [] as ProcessElement[]),
+    ])
+      .then(([pub, els]) => {
+        if (cancelled) return;
+        setBpmnXml(pub?.bpmn_xml ?? null);
+        setElements(els ?? []);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [node.id]);
+
+  const openFlowEditor = () => onNavigate(`/cards/${node.id}?tab=1`);
+
+  return (
+    <Dialog open onClose={onClose} fullScreen>
+      <AppBar position="relative" color="default" elevation={1}>
+        <Toolbar>
+          <IconButton edge="start" onClick={onClose} aria-label={t("common:actions.close")}>
+            <MaterialSymbol icon="close" />
+          </IconButton>
+          <Typography sx={{ ml: 2, flex: 1 }} variant="h6" component="div" noWrap>
+            {node.name} &mdash; {t("navigator.flow")}
+          </Typography>
+          <Button
+            color="inherit"
+            startIcon={<MaterialSymbol icon="open_in_new" />}
+            onClick={openFlowEditor}
+          >
+            {t("navigator.viewFlow")}
+          </Button>
+        </Toolbar>
+      </AppBar>
+      <DialogContent sx={{ p: 0, display: "flex", flexDirection: "column" }}>
+        {loading ? (
+          <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", py: 6 }}>
+            <CircularProgress size={40} />
+          </Box>
+        ) : !bpmnXml ? (
+          <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", py: 6 }}>
+            <MaterialSymbol icon="schema" size={48} color="#ccc" />
+            <Typography color="text.secondary" sx={{ mt: 1 }}>
+              {t("navigator.noProcessFlow")}
+            </Typography>
+            <Chip
+              size="small"
+              icon={<MaterialSymbol icon="open_in_new" size={14} />}
+              label={t("navigator.goToProcessFlow")}
+              onClick={openFlowEditor}
+              color="primary"
+              sx={{ mt: 1.5, cursor: "pointer" }}
+            />
+          </Box>
+        ) : (
+          <Box sx={{ flex: 1, minHeight: 0 }}>
+            <Suspense
+              fallback={
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", height: "calc(100vh - 116px)" }}>
+                  <CircularProgress size={40} />
+                </Box>
+              }
+            >
+              <LazyBpmnViewer
+                bpmnXml={bpmnXml}
+                elements={elements}
+                onElementClick={() => {}}
+                height="calc(100vh - 116px)"
+              />
+            </Suspense>
+          </Box>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1779,12 +1997,16 @@ function LevelIndicator({
 
 function OverlayLegend({ overlay }: { overlay: ColorOverlay }) {
   const { t } = useTranslation(["bpm", "common"]);
-  const items = ATTR_COLORS[overlay];
-  if (!items) return null;
+  const { options: processTypeOptions } = useProcessTypeOptions();
+  const items =
+    overlay === "processType"
+      ? processTypeOptions.map(({ label, color }) => ({ label, color }))
+      : Object.values(ATTR_COLORS[overlay] ?? {});
+  if (items.length === 0) return null;
 
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
-      {Object.values(items).map((item) => (
+      {items.map((item) => (
         <Box key={item.label} sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
           <Box
             sx={{
@@ -1868,6 +2090,7 @@ export default function ProcessNavigator() {
   const [overlay, setOverlay] = useState<ColorOverlay>(overlayParam);
   const [zoomNodeId, setZoomNodeId] = useState<string | null>(zoomParam);
   const [drawerNode, setDrawerNode] = useState<ProcNode | null>(null);
+  const [flowNode, setFlowNode] = useState<ProcNode | null>(null);
   const [orgFilter, setOrgFilter] = useState<RefItem[]>([]);
 
   // ── Load data ──
@@ -1992,6 +2215,8 @@ export default function ProcessNavigator() {
     [],
   );
 
+  const handleViewFlow = useCallback((node: ProcNode) => setFlowNode(node), []);
+
   const handleDrill = useCallback((id: string) => {
     setZoomNodeId(id);
     setDrawerNode(null);
@@ -2014,18 +2239,50 @@ export default function ProcessNavigator() {
     setDrawerNode(n);
   }, []);
 
+  // ── Process House rows: metamodel-driven grouping by processType ──
+  const {
+    options: ptOptions,
+    defaultKey: ptDefaultKey,
+    resolve: resolveProcessType,
+  } = useProcessTypeOptions();
+
+  const houseRows = useMemo(() => {
+    const rows: Record<string, ProcNode[]> = {};
+    for (const opt of ptOptions) rows[opt.key] = [];
+    if (!rows[ptDefaultKey]) rows[ptDefaultKey] = [];
+    for (const node of displayTree) {
+      const pType = (node.attributes?.processType as string) || ptDefaultKey;
+      // Unknown / hidden keys get their own synthetic row instead of being
+      // silently folded into the default row.
+      if (!rows[pType]) rows[pType] = [];
+      rows[pType].push(node);
+    }
+    return rows;
+  }, [displayTree, ptOptions, ptDefaultKey]);
+
+  // Persisted order first (stale keys dropped), then any option or
+  // data-derived row key it doesn't cover yet, in metamodel order.
+  const effectiveRowOrder = useMemo(() => {
+    const known = new Set(Object.keys(houseRows));
+    const order: string[] = [];
+    for (const key of [...rowOrder, ...ptOptions.map((o) => o.key), ...Object.keys(houseRows)]) {
+      if (known.has(key) && !order.includes(key)) order.push(key);
+    }
+    return order;
+  }, [rowOrder, ptOptions, houseRows]);
+
   // ── Drag-and-drop reorder for cards (admin only) ──
   const dragRef = useRef<{ id: string; rowType: string } | null>(null);
   const handleDragDrop = useCallback(
     async (dragId: string, dropId: string, rowType: string) => {
       if (!data || reordering || dragId === dropId) return;
 
-      // rowType is either a process-type row ("management"/"core"/"support")
+      // rowType is either a process-type row key (e.g. "management")
       // or a parent node ID (for leaf cards inside a container).
-      const isProcessRow = ["management", "core", "support"].includes(rowType);
+      const isProcessRow = effectiveRowOrder.includes(rowType);
       const siblings = data
         .filter((d) => isProcessRow
-          ? (!d.parent_id && ((d.attributes?.processType as string) || "core") === rowType)
+          ? (!d.parent_id && ((d.attributes?.processType as string) || ptDefaultKey) === rowType)
           : d.parent_id === rowType)
         .sort((a, b) => {
           const oa = (a.attributes?.sortOrder as number) ?? 999;
@@ -2058,16 +2315,16 @@ export default function ProcessNavigator() {
         setReordering(false);
       }
     },
-    [data, reordering, loadData],
+    [data, reordering, loadData, effectiveRowOrder, ptDefaultKey],
   );
 
   // ── Row reorder (admin) ──
   const handleMoveRow = useCallback(
     async (rowType: string, direction: "up" | "down") => {
-      const idx = rowOrder.indexOf(rowType);
+      const idx = effectiveRowOrder.indexOf(rowType);
       const swapIdx = direction === "up" ? idx - 1 : idx + 1;
-      if (idx < 0 || swapIdx < 0 || swapIdx >= rowOrder.length) return;
-      const newOrder = [...rowOrder];
+      if (idx < 0 || swapIdx < 0 || swapIdx >= effectiveRowOrder.length) return;
+      const newOrder = [...effectiveRowOrder];
       [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
       setRowOrder(newOrder);
       // Persist to backend
@@ -2077,27 +2334,8 @@ export default function ProcessNavigator() {
         console.error("Failed to save row order", e);
       }
     },
-    [rowOrder],
+    [effectiveRowOrder],
   );
-
-  // ── Process House: group roots by processType ──
-  const houseRows = useMemo(() => {
-    const rows: Record<string, ProcNode[]> = {
-      management: [],
-      core: [],
-      support: [],
-    };
-    const source = displayTree;
-    for (const node of source) {
-      const pType = (node.attributes?.processType as string) || "core";
-      if (rows[pType]) {
-        rows[pType].push(node);
-      } else {
-        rows.core.push(node); // Default to core
-      }
-    }
-    return rows;
-  }, [displayTree]);
 
   // ── Search filter for house view ──
   const searchLower = search.toLowerCase();
@@ -2339,9 +2577,10 @@ export default function ProcessNavigator() {
             </Box>
           ) : (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
-              {rowOrder.map((rowType, rowIdx) => {
+              {effectiveRowOrder.map((rowType, rowIdx) => {
                 const nodes = houseRows[rowType] || [];
                 if (nodes.length === 0 && search) return null;
+                const rowOption = resolveProcessType(rowType);
                 return (
                   <Box key={rowType}>
                     {/* Row header */}
@@ -2359,25 +2598,25 @@ export default function ProcessNavigator() {
                           width: 4,
                           height: 20,
                           borderRadius: 2,
-                          bgcolor: PROCESS_TYPE_ROW_COLORS[rowType],
+                          bgcolor: rowOption.color,
                         }}
                       />
                       <Typography
                         variant="subtitle2"
                         sx={{
                           fontWeight: 700,
-                          color: PROCESS_TYPE_ROW_COLORS[rowType],
+                          color: rowOption.color,
                           textTransform: "uppercase",
                           letterSpacing: 0.5,
                           fontSize: "0.75rem",
                         }}
                       >
-                        {t(PROCESS_TYPE_ROW_LABEL_KEYS[rowType])}
+                        {t("navigator.processRow", { type: rowOption.label })}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
                         ({nodes.length})
                       </Typography>
-                      {isAdmin && rowOrder.length > 1 && (
+                      {isAdmin && effectiveRowOrder.length > 1 && (
                         <Box sx={{ display: "flex", ml: 0.5 }}>
                           <IconButton
                             size="small"
@@ -2389,7 +2628,7 @@ export default function ProcessNavigator() {
                           </IconButton>
                           <IconButton
                             size="small"
-                            disabled={rowIdx === rowOrder.length - 1}
+                            disabled={rowIdx === effectiveRowOrder.length - 1}
                             onClick={() => handleMoveRow(rowType, "down")}
                             sx={{ p: 0.25 }}
                           >
@@ -2412,7 +2651,7 @@ export default function ProcessNavigator() {
                         }}
                       >
                         <Typography variant="body2" color="text.secondary">
-                          {t("navigator.noProcessesDefined", { type: t(PROCESS_TYPE_ROW_LABEL_KEYS[rowType]).toLowerCase() })}
+                          {t("navigator.noProcessesDefined", { type: t("navigator.processRow", { type: rowOption.label }) })}
                         </Typography>
                       </Box>
                     ) : (() => {
@@ -2439,8 +2678,10 @@ export default function ProcessNavigator() {
                               search={search}
                               isAdmin={isAdmin}
                               rowType={rowType}
+                              inProcessRow
                               onOpen={handleOpenDrawer}
                               onDrill={handleDrill}
+                              onViewFlow={handleViewFlow}
                               dragRef={dragRef}
                               onDragDrop={handleDragDrop}
                             />
@@ -2468,8 +2709,10 @@ export default function ProcessNavigator() {
                               search={search}
                               isAdmin={isAdmin}
                               rowType={rowType}
+                              inProcessRow
                               onOpen={handleOpenDrawer}
                               onDrill={handleDrill}
+                              onViewFlow={handleViewFlow}
                               dragRef={dragRef}
                               onDragDrop={handleDragDrop}
                             />
@@ -2513,6 +2756,15 @@ export default function ProcessNavigator() {
           />
         )}
       </Drawer>
+
+      {/* ── Fullscreen Flow Preview ── */}
+      {flowNode && (
+        <FlowPreviewDialog
+          node={flowNode}
+          onClose={() => setFlowNode(null)}
+          onNavigate={handleNavigate}
+        />
+      )}
     </Box>
   );
 }

@@ -24,21 +24,35 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import Switch from "@mui/material/Switch";
 import Accordion from "@mui/material/Accordion";
 import AccordionSummary from "@mui/material/AccordionSummary";
 import AccordionDetails from "@mui/material/AccordionDetails";
 import CircularProgress from "@mui/material/CircularProgress";
+import Divider from "@mui/material/Divider";
+import Link from "@mui/material/Link";
 import Paper from "@mui/material/Paper";
 import Popper from "@mui/material/Popper";
 import Autocomplete from "@mui/material/Autocomplete";
 import CodeEditor from "react-simple-code-editor";
 import MaterialSymbol from "@/components/MaterialSymbol";
 import { api } from "@/api/client";
+import { useAbortableEffect } from "@/hooks/useLatestRequest";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useMetamodel } from "@/hooks/useMetamodel";
 import { useTypeLabel, useRelationLabel, useFieldLabel } from "@/hooks/useResolveLabel";
 import { useDateFormat } from "@/hooks/useDateFormat";
-import type { Calculation, Card as CardItem, CardType, FieldDef, RelationType } from "@/types";
+import { STATUS_COLORS } from "@/theme";
+import { formatRunReport } from "./calculationRunReport";
+import type {
+  Calculation,
+  CalculationRunReport,
+  Card as CardItem,
+  CardType,
+  FieldDef,
+  RelationType,
+} from "@/types";
 
 // ── Suggestion types ───────────────────────────────────────────────
 
@@ -52,7 +66,7 @@ interface Suggestion {
 // ── Syntax highlighting ───────────────────────────────────────────
 
 const FORMULA_FUNCTIONS = new Set([
-  "IF", "SUM", "AVG", "MIN", "MAX", "COUNT", "ROUND", "ABS",
+  "IF", "SUM", "AVG", "MIN", "MAX", "COUNT", "ROUND", "ABS", "LN",
   "COALESCE", "LOWER", "UPPER", "CONCAT", "CONTAINS", "PLUCK",
   "FILTER", "MAP_SCORE",
 ]);
@@ -121,7 +135,7 @@ function highlightLine(line: string): string {
         result += `<span class="hl-constant">${escapeHtml(word)}</span>`;
       } else if (FORMULA_KEYWORDS.has(word)) {
         result += `<span class="hl-keyword">${escapeHtml(word)}</span>`;
-      } else if (word === "data" || word === "relations" || word === "relation_count" || word === "children" || word === "children_count") {
+      } else if (word === "data" || word === "relations" || word === "relation_count" || word === "children" || word === "children_count" || word === "parent" || word === "hierarchy_level") {
         result += `<span class="hl-context">${escapeHtml(word)}</span>`;
       } else {
         result += escapeHtml(word);
@@ -186,6 +200,9 @@ function FormulaEditor({ value, onChange, cardType, relationTypes }: FormulaEdit
       { insert: "relation_count", label: "relation_count", detail: "Relation counts by type", category: "Context" },
       { insert: "children", label: "children", detail: "Child cards list", category: "Context" },
       { insert: "children_count", label: "children_count", detail: "Number of children", category: "Context" },
+      { insert: "parent", label: "parent", detail: "Parent card object (or None)", category: "Context" },
+      { insert: "hierarchy_level", label: "hierarchy_level", detail: "Depth in hierarchy (1 = root)", category: "Context" },
+      { insert: "ppm", label: "ppm", detail: "PPM budget & cost data (Initiative)", category: "Context" },
       { insert: "None", label: "None", detail: "Null value", category: "Constants" },
       { insert: "True", label: "True", detail: "Boolean true", category: "Constants" },
       { insert: "False", label: "False", detail: "Boolean false", category: "Constants" },
@@ -201,6 +218,7 @@ function FormulaEditor({ value, onChange, cardType, relationTypes }: FormulaEdit
       ["COUNT", "COUNT(list)", "List length"],
       ["ROUND", "ROUND(num, decimals)", "Round number"],
       ["ABS", "ABS(num)", "Absolute value"],
+      ["LN", "LN(num)", "Natural log (null for \u2264 0)"],
       ["COALESCE", "COALESCE(v1, v2, ...)", "First non-null"],
       ["LOWER", "LOWER(s)", "Lowercase"],
       ["UPPER", "UPPER(s)", "Uppercase"],
@@ -222,6 +240,26 @@ function FormulaEditor({ value, onChange, cardType, relationTypes }: FormulaEdit
 
     return items;
   }, []);
+
+  // PPM budget/cost measures (used after "ppm.")
+  const ppmFieldSuggestions = useMemo<Suggestion[]>(() => {
+    const items: Suggestion[] = [];
+    for (const measure of ["Budget", "Planned", "Actual"]) {
+      for (const bucket of ["capex", "opex", "total"]) {
+        items.push({
+          insert: `${bucket}${measure}`,
+          label: `${bucket}${measure}`,
+          detail: t(`calculations.ppm${measure}`, { bucket }),
+          category: "PPM",
+        });
+      }
+    }
+    items.push({ insert: "byYear", label: "byYear", detail: t("calculations.ppmByYear"), category: "PPM" });
+    items.push({ insert: "currentFiscalYear", label: "currentFiscalYear", detail: t("calculations.ppmCurrentFy"), category: "PPM" });
+    items.push({ insert: "unscheduledPlanned", label: "unscheduledPlanned", detail: t("calculations.ppmUnscheduled"), category: "PPM" });
+    items.push({ insert: "unscheduledActual", label: "unscheduledActual", detail: t("calculations.ppmUnscheduled"), category: "PPM" });
+    return items;
+  }, [t]);
 
   // Data fields for the selected card type (used after "data.")
   const dataFieldSuggestions = useMemo(() => {
@@ -287,6 +325,8 @@ function FormulaEditor({ value, onChange, cardType, relationTypes }: FormulaEdit
       pool = dataFieldSuggestions;
     } else if (prefix === "relations" || prefix === "relation_count") {
       pool = relationKeySuggestions;
+    } else if (prefix === "ppm") {
+      pool = ppmFieldSuggestions;
     } else if (prefix) {
       // Nested access like "relations.relAppToITC." — no suggestions for deeper nesting
       return [];
@@ -296,7 +336,7 @@ function FormulaEditor({ value, onChange, cardType, relationTypes }: FormulaEdit
 
     if (!lower) return prefix ? pool.slice(0, 20) : []; // Show all after dot, nothing without typing
     return pool.filter((s) => s.label.toLowerCase().includes(lower)).slice(0, 12);
-  }, [cursorToken, allSuggestions, dataFieldSuggestions, relationKeySuggestions]);
+  }, [cursorToken, allSuggestions, dataFieldSuggestions, relationKeySuggestions, ppmFieldSuggestions]);
 
   // Handle value change from the code editor
   const handleValueChange = useCallback(
@@ -529,6 +569,19 @@ COALESCE(data.budgetCapEx, 0) + COALESCE(data.budgetOpEx, 0)
 # Count related applications
 relation_count.relAppToITC
 
+# Sum a field from related cards (note the "attributes." prefix)
+SUM(PLUCK(relations.relAppToITC, "attributes.costTotalAnnual"))
+
+# PPM capex budget on an Initiative, and just this fiscal year's
+ppm.capexBudget
+SUM(PLUCK(FILTER(ppm.byYear, "year", ppm.currentFiscalYear), "capexBudget"))
+
+# Inherit a value from the parent card (fall back to own value at the root)
+IF(parent, parent.attributes.businessCriticality, data.businessCriticality)
+
+# Score by depth in the hierarchy (1 = root)
+hierarchy_level * 10
+
 # Weighted score
 scores = {"perfect": 4, "good": 3, "adequate": 2, "poor": 1}
 MAP_SCORE(data.stability, scores) * 0.5 + MAP_SCORE(data.security, scores) * 0.5
@@ -622,6 +675,7 @@ function FormulaReference({ cardType, relationTypes }: FormulaReferenceProps) {
     { name: "COUNT(list)", desc: "Length of a list" },
     { name: "ROUND(num, decimals)", desc: "Round a number" },
     { name: "ABS(num)", desc: "Absolute value" },
+    { name: "LN(num)", desc: "Natural logarithm (null for values \u2264 0)" },
     { name: "COALESCE(v1, v2, ...)", desc: "First non-null value" },
     { name: "LOWER(s) / UPPER(s)", desc: "Case conversion" },
     { name: "CONCAT(s1, s2, ...)", desc: "String concatenation" },
@@ -629,6 +683,16 @@ function FormulaReference({ cardType, relationTypes }: FormulaReferenceProps) {
     { name: "PLUCK(list, key)", desc: "Extract field from each dict" },
     { name: "FILTER(list, key, val)", desc: "Filter list by field value" },
     { name: 'MAP_SCORE(val, {"a":1,...})', desc: "Map key to score" },
+  ];
+
+  const contextVars = [
+    { name: "parent", desc: t("calculations.ctxParent") },
+    { name: "parent.attributes.<key>", desc: t("calculations.ctxParentAttributes") },
+    { name: "hierarchy_level", desc: t("calculations.ctxHierarchyLevel") },
+    { name: "children", desc: t("calculations.ctxChildren") },
+    { name: "children_count", desc: t("calculations.ctxChildrenCount") },
+    { name: "ppm.capexBudget", desc: t("calculations.ctxPpm") },
+    { name: "ppm.byYear", desc: t("calculations.ctxPpmByYear") },
   ];
 
   return (
@@ -689,6 +753,24 @@ function FormulaReference({ cardType, relationTypes }: FormulaReferenceProps) {
 
           <Box>
             <Typography variant="caption" fontWeight={600} gutterBottom>
+              {t("calculations.contextVariables")}
+            </Typography>
+            <Table size="small" sx={{ mt: 0.5 }}>
+              <TableBody>
+                {contextVars.map((cv) => (
+                  <TableRow key={cv.name}>
+                    <TableCell sx={{ fontFamily: "monospace", fontSize: "0.75rem", py: 0.25, whiteSpace: "nowrap" }}>
+                      {cv.name}
+                    </TableCell>
+                    <TableCell sx={{ fontSize: "0.75rem", py: 0.25 }}>{cv.desc}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Box>
+
+          <Box>
+            <Typography variant="caption" fontWeight={600} gutterBottom>
               {t("calculations.builtInFunctions")}
             </Typography>
             <Table size="small" sx={{ mt: 0.5 }}>
@@ -735,7 +817,7 @@ function EditDialog({ open, calculation, cardTypes, relationTypes, onClose, onSa
   const [form, setForm] = useState<Partial<Calculation>>({});
   const [saving, setSaving] = useState(false);
   const [validating, setValidating] = useState(false);
-  const [validationResult, setValidationResult] = useState<{ valid: boolean; error?: string; preview_result?: unknown } | null>(null);
+  const [validationResult, setValidationResult] = useState<{ valid: boolean; error?: string; preview_result?: unknown; warnings?: string[] } | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -765,7 +847,7 @@ function EditDialog({ open, calculation, cardTypes, relationTypes, onClose, onSa
     setValidating(true);
     setValidationResult(null);
     try {
-      const res = await api.post<{ valid: boolean; error?: string; preview_result?: unknown }>(
+      const res = await api.post<{ valid: boolean; error?: string; preview_result?: unknown; warnings?: string[] }>(
         "/calculations/validate",
         { formula: form.formula, target_type_key: form.target_type_key }
       );
@@ -858,6 +940,21 @@ function EditDialog({ open, calculation, cardTypes, relationTypes, onClose, onSa
             sx={{ maxWidth: 180 }}
           />
 
+          <Box>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={form.blanks_as_zero ?? false}
+                  onChange={(e) => setForm({ ...form, blanks_as_zero: e.target.checked })}
+                />
+              }
+              label={t("calculations.blanksAsZero")}
+            />
+            <Typography variant="caption" color="text.secondary" display="block">
+              {t("calculations.blanksAsZeroHelp")}
+            </Typography>
+          </Box>
+
           <FormulaEditor
             value={form.formula || ""}
             onChange={(v) => {
@@ -885,17 +982,21 @@ function EditDialog({ open, calculation, cardTypes, relationTypes, onClose, onSa
                 color={validationResult.valid ? "success" : "error"}
               />
             )}
-            {validationResult?.error && (
-              <Typography variant="caption" color="error" sx={{ ml: 1 }}>
-                {validationResult.error}
-              </Typography>
-            )}
             {validationResult?.valid && validationResult.preview_result !== undefined && (
               <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
                 {t("calculations.preview", { value: JSON.stringify(validationResult.preview_result) })}
               </Typography>
             )}
           </Box>
+
+          {validationResult?.error && <Alert severity="error">{validationResult.error}</Alert>}
+          {!!validationResult?.warnings?.length && (
+            <Alert severity="warning">
+              {validationResult.warnings.map((w) => (
+                <div key={w}>{w}</div>
+              ))}
+            </Alert>
+          )}
 
           <FormulaReference cardType={selectedType || null} relationTypes={relationTypes} />
         </Box>
@@ -940,27 +1041,33 @@ function TestDialog({ open, calculation, onClose }: TestDialogProps) {
     }
   }, [open]);
 
-  // Debounced card search
-  useEffect(() => {
-    if (!searchInput || searchInput.length < 2 || !calculation?.target_type_key) {
-      setOptions([]);
-      return;
-    }
-    setSearchLoading(true);
-    const timer = setTimeout(async () => {
+  // Debounced card search. `clearTimeout` cancelled the timer but never the
+  // request, so a stale response could replace newer options (#882).
+  const [debouncedSearchInput, searchDebouncePending] = useDebouncedValue(searchInput, 300);
+  useAbortableEffect(
+    async ({ signal, isCurrent }) => {
+      if (!debouncedSearchInput || debouncedSearchInput.length < 2 || !calculation?.target_type_key) {
+        setOptions([]);
+        setSearchLoading(false);
+        return;
+      }
+      setSearchLoading(true);
       try {
         const res = await api.get<{ items: CardItem[] }>(
-          `/cards?type=${encodeURIComponent(calculation.target_type_key)}&search=${encodeURIComponent(searchInput)}&page_size=15`,
+          `/cards?type=${encodeURIComponent(calculation.target_type_key)}&search=${encodeURIComponent(debouncedSearchInput)}&page_size=15`,
+          { signal },
         );
+        if (!isCurrent()) return;
         setOptions(res.items);
       } catch {
+        if (!isCurrent()) return;
         setOptions([]);
       } finally {
-        setSearchLoading(false);
+        if (isCurrent()) setSearchLoading(false);
       }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchInput, calculation?.target_type_key]);
+    },
+    [debouncedSearchInput, calculation?.target_type_key],
+  );
 
   const handleTest = async () => {
     if (!calculation || !selectedCard) return;
@@ -1006,7 +1113,7 @@ function TestDialog({ open, calculation, onClose }: TestDialogProps) {
             filterOptions={(x) => x}
             getOptionLabel={(opt) => opt.name}
             isOptionEqualToValue={(opt, val) => opt.id === val.id}
-            loading={searchLoading}
+            loading={searchLoading || searchDebouncePending}
             noOptionsText={searchInput.length < 2 ? t("calculations.typeToSearch") : t("calculations.noCardsFound")}
             renderOption={({ key, ...optProps }, option) => (
               <li key={option.id} {...optProps}>
@@ -1030,7 +1137,7 @@ function TestDialog({ open, calculation, onClose }: TestDialogProps) {
                     ...params.InputProps,
                     endAdornment: (
                       <>
-                        {searchLoading ? <CircularProgress color="inherit" size={16} /> : null}
+                        {searchLoading || searchDebouncePending ? <CircularProgress color="inherit" size={16} /> : null}
                         {params.InputProps.endAdornment}
                       </>
                     ),
@@ -1064,6 +1171,133 @@ function TestDialog({ open, calculation, onClose }: TestDialogProps) {
   );
 }
 
+// ── Recalculation results ──────────────────────────────────────────
+
+interface RecalcResultDialogProps {
+  open: boolean;
+  report: CalculationRunReport | null;
+  typeName: string;
+  onClose: () => void;
+}
+
+function RecalcResultDialog({ open, report, typeName, onClose }: RecalcResultDialogProps) {
+  const { t } = useTranslation(["admin", "common"]);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (open) setCopied(false);
+  }, [open]);
+
+  if (!report) return null;
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(formatRunReport(report, typeName));
+      setCopied(true);
+    } catch {
+      // Clipboard permission denied or unavailable — the report is still on
+      // screen, so there is nothing useful to say about it.
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>{t("calculations.recalcDialogTitle", { type: typeName })}</DialogTitle>
+      <DialogContent dividers>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {t("calculations.recalcResult", {
+            cards: report.cards_processed,
+            succeeded: report.calculations_succeeded,
+            failed: report.calculations_failed,
+          })}
+        </Typography>
+
+        {report.calculations.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            {t("calculations.recalcNothingRan")}
+          </Typography>
+        ) : (
+          report.calculations.map((calc, idx) => (
+            <Box key={calc.calculation_id} sx={{ mb: 2 }}>
+              {idx > 0 && <Divider sx={{ mb: 2 }} />}
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap", mb: 1 }}>
+                <Typography variant="body2" fontWeight={600}>
+                  {calc.name}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {calc.target_field}
+                </Typography>
+                <Box sx={{ flex: 1 }} />
+                <Chip
+                  size="small"
+                  color="success"
+                  variant={calc.succeeded ? "filled" : "outlined"}
+                  label={t("calculations.recalcOkCount", { count: calc.succeeded })}
+                />
+                {calc.failed > 0 && (
+                  <Chip
+                    size="small"
+                    color="error"
+                    label={t("calculations.recalcFailedCount", { count: calc.failed })}
+                  />
+                )}
+              </Box>
+
+              {calc.failures.length === 0 ? (
+                <Typography variant="caption" color="text.secondary">
+                  {t("calculations.recalcAllClean")}
+                </Typography>
+              ) : (
+                calc.failures.map((group) => (
+                  <Paper key={group.error} variant="outlined" sx={{ p: 1.5, mb: 1 }}>
+                    <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
+                      <MaterialSymbol icon="error" size={18} color={STATUS_COLORS.error} />
+                      <Typography variant="body2" sx={{ flex: 1 }}>
+                        {group.error}
+                      </Typography>
+                      <Chip size="small" label={group.count} />
+                    </Box>
+                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mt: 1, pl: 3.5 }}>
+                      {group.cards.map((card) => (
+                        <Link
+                          key={card.id}
+                          href={`/cards/${card.id}`}
+                          target="_blank"
+                          rel="noopener"
+                          variant="caption"
+                        >
+                          {card.name}
+                        </Link>
+                      ))}
+                      {group.cards_truncated && (
+                        <Typography variant="caption" color="text.secondary">
+                          {t("calculations.recalcMoreCards", {
+                            count: group.count - group.cards.length,
+                          })}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Paper>
+                ))
+              )}
+            </Box>
+          ))
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button
+          onClick={handleCopy}
+          startIcon={<MaterialSymbol icon={copied ? "check" : "content_copy"} size={18} />}
+        >
+          {copied ? t("calculations.recalcCopied") : t("calculations.recalcCopy")}
+        </Button>
+        <Box sx={{ flex: 1 }} />
+        <Button onClick={onClose}>{t("common:actions.close")}</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 // ── Main Component ─────────────────────────────────────────────────
 
 export default function CalculationsAdmin() {
@@ -1080,7 +1314,12 @@ export default function CalculationsAdmin() {
   const [testOpen, setTestOpen] = useState(false);
   const [testCalc, setTestCalc] = useState<Calculation | null>(null);
   const [recalculating, setRecalculating] = useState<string | null>(null);
-  const [recalcResult, setRecalcResult] = useState<{ type: string; message: string } | null>(null);
+  const [recalcResult, setRecalcResult] = useState<{
+    type: string;
+    report: CalculationRunReport | null;
+    message?: string;
+  } | null>(null);
+  const [recalcDetailOpen, setRecalcDetailOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<Calculation | null>(null);
   const [filterType, setFilterType] = useState<string>("");
 
@@ -1110,6 +1349,7 @@ export default function CalculationsAdmin() {
       target_field_key: data.target_field_key,
       formula: data.formula,
       execution_order: data.execution_order,
+      blanks_as_zero: data.blanks_as_zero ?? false,
     };
     if (data.id) {
       await api.patch(`/calculations/${data.id}`, payload);
@@ -1145,18 +1385,18 @@ export default function CalculationsAdmin() {
   const handleRecalculate = async (typeKey: string) => {
     setRecalculating(typeKey);
     setRecalcResult(null);
+    setRecalcDetailOpen(false);
     try {
-      const res = await api.post<{
-        cards_processed: number;
-        calculations_succeeded: number;
-        calculations_failed: number;
-      }>(`/calculations/recalculate/${typeKey}`, {});
-      setRecalcResult({
-        type: typeKey,
-        message: t("calculations.recalcResult", { cards: res.cards_processed, succeeded: res.calculations_succeeded, failed: res.calculations_failed }),
-      });
+      const report = await api.post<CalculationRunReport>(
+        `/calculations/recalculate/${typeKey}`,
+        {},
+      );
+      setRecalcResult({ type: typeKey, report });
+      // The list's per-row Error/OK chip is settled by the run, so pull the
+      // rows back rather than leaving a stale status next to fresh results.
+      await fetchCalculations();
     } catch (e: unknown) {
-      setRecalcResult({ type: typeKey, message: `Error: ${String(e)}` });
+      setRecalcResult({ type: typeKey, report: null, message: `Error: ${String(e)}` });
     } finally {
       setRecalculating(null);
     }
@@ -1225,11 +1465,35 @@ export default function CalculationsAdmin() {
 
       {recalcResult && (
         <Alert
-          severity="info"
+          severity={
+            !recalcResult.report
+              ? "error"
+              : recalcResult.report.calculations_failed > 0
+                ? "warning"
+                : "success"
+          }
           sx={{ mb: 2 }}
           onClose={() => setRecalcResult(null)}
+          action={
+            recalcResult.report && recalcResult.report.calculations.length > 0 ? (
+              <Button
+                color="inherit"
+                size="small"
+                onClick={() => setRecalcDetailOpen(true)}
+              >
+                {t("calculations.recalcViewDetails")}
+              </Button>
+            ) : undefined
+          }
         >
-          <strong>{getTypeLabel(recalcResult.type)}:</strong> {recalcResult.message}
+          <strong>{getTypeLabel(recalcResult.type)}:</strong>{" "}
+          {recalcResult.report
+            ? t("calculations.recalcResult", {
+                cards: recalcResult.report.cards_processed,
+                succeeded: recalcResult.report.calculations_succeeded,
+                failed: recalcResult.report.calculations_failed,
+              })
+            : recalcResult.message}
         </Alert>
       )}
 
@@ -1299,6 +1563,16 @@ export default function CalculationsAdmin() {
                     )}
                   </TableCell>
                   <TableCell>
+                    {!!calc.warnings?.length && (
+                      <Tooltip title={calc.warnings.join("\n")}>
+                        <Chip
+                          size="small"
+                          label={t("calculations.warning")}
+                          color="warning"
+                          sx={{ mr: 0.5 }}
+                        />
+                      </Tooltip>
+                    )}
                     {calc.last_error ? (
                       <Tooltip title={calc.last_error}>
                         <Chip size="small" label={t("calculations.error")} color="error" />
@@ -1373,6 +1647,13 @@ export default function CalculationsAdmin() {
         open={testOpen}
         calculation={testCalc}
         onClose={() => setTestOpen(false)}
+      />
+
+      <RecalcResultDialog
+        open={recalcDetailOpen}
+        report={recalcResult?.report ?? null}
+        typeName={recalcResult ? getTypeLabel(recalcResult.type) : ""}
+        onClose={() => setRecalcDetailOpen(false)}
       />
 
       {/* Delete confirmation */}

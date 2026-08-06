@@ -20,6 +20,7 @@ from app.schemas.adr import (
     ADRCreate,
     ADRRejectRequest,
     ADRSignatureRequest,
+    ADRSignRequest,
     ADRUpdate,
 )
 from app.services import notification_service
@@ -43,6 +44,53 @@ async def _next_reference_number(db: AsyncSession) -> str:
     else:
         num = 1
     return f"ADR-{num:03d}"
+
+
+async def _resolve_card_ids(db: AsyncSession, card_ids: list[str]) -> list[uuid.UUID]:
+    """Parse and verify a list of card UUIDs, raising 400/404 with the
+    offending values so a bad link list never silently no-ops."""
+    parsed: list[uuid.UUID] = []
+    seen: set[uuid.UUID] = set()
+    for cid in card_ids:
+        try:
+            parsed_id = uuid.UUID(cid)
+        except (ValueError, AttributeError, TypeError):
+            raise HTTPException(400, f"Invalid card id: {cid!r}") from None
+        if parsed_id not in seen:
+            seen.add(parsed_id)
+            parsed.append(parsed_id)
+    if parsed:
+        result = await db.execute(select(Card.id).where(Card.id.in_(parsed)))
+        found = set(result.scalars().all())
+        missing = [str(cid) for cid in parsed if cid not in found]
+        if missing:
+            raise HTTPException(404, f"Cards not found: {', '.join(missing)}")
+    return parsed
+
+
+async def _publish_adr_card_event(
+    db: AsyncSession,
+    adr: ArchitectureDecision,
+    event_type: str,
+    card_id: uuid.UUID,
+    *,
+    actor_id: uuid.UUID,
+) -> None:
+    """Fan an ADR link/unlink out to the affected card so the decision shows up
+    in that card's history timeline (and drives the ADRs tab activity dot)."""
+    await event_bus.publish(
+        event_type,
+        {
+            "adr_id": str(adr.id),
+            "reference_number": adr.reference_number,
+            "title": adr.title,
+            "status": adr.status,
+            "link": f"/ea-delivery/adr/{adr.id}",
+        },
+        db=db,
+        card_id=card_id,
+        user_id=actor_id,
+    )
 
 
 async def _get_adr(db: AsyncSession, adr_id: str) -> ArchitectureDecision:
@@ -86,6 +134,7 @@ async def _adr_to_dict(db: AsyncSession, adr: ArchitectureDecision) -> dict:
         "consequences": adr.consequences,
         "alternatives_considered": adr.alternatives_considered,
         "related_decisions": adr.related_decisions or [],
+        "attributes": adr.attributes or {},
         "created_by": str(adr.created_by) if adr.created_by else None,
         "creator_name": creator_name,
         "signatories": adr.signatories or [],
@@ -110,6 +159,7 @@ def _adr_to_summary(
         "title": adr.title,
         "status": adr.status,
         "decision": adr.decision,
+        "attributes": adr.attributes or {},
         "created_by": str(adr.created_by) if adr.created_by else None,
         "creator_name": creator_name,
         "signatories": adr.signatories or [],
@@ -271,6 +321,7 @@ async def create_adr(
     user: User = Depends(get_current_user),
 ):
     await PermissionService.require_permission(db, user, "adr.manage")
+    card_ids = await _resolve_card_ids(db, body.linked_card_ids or [])
     ref_num = await _next_reference_number(db)
     adr = ArchitectureDecision(
         reference_number=ref_num,
@@ -283,6 +334,9 @@ async def create_adr(
         created_by=user.id,
     )
     db.add(adr)
+    await db.flush()
+    for cid in card_ids:
+        db.add(ArchitectureDecisionCard(architecture_decision_id=adr.id, card_id=cid))
     await db.commit()
     await db.refresh(adr)
     return await _adr_to_dict(db, adr)
@@ -325,6 +379,23 @@ async def update_adr(
     if body.related_decisions is not None:
         adr.related_decisions = body.related_decisions
         flag_modified(adr, "related_decisions")
+    if body.attributes is not None:
+        # Extension attributes bag: shallow-merge namespaced ``ext.*`` keys.
+        # A key set to null is removed. Core owns no native ADR attributes, so
+        # non-namespaced keys are rejected to keep extension data self-contained
+        # and collision-free. Signed ADRs never reach here (blocked above).
+        merged = dict(adr.attributes or {})
+        for key, value in body.attributes.items():
+            if not key.startswith("ext."):
+                raise HTTPException(
+                    400, f"ADR attribute keys must be namespaced 'ext.*' (got {key!r})"
+                )
+            if value is None:
+                merged.pop(key, None)
+            else:
+                merged[key] = value
+        adr.attributes = merged
+        flag_modified(adr, "attributes")
     if body.status is not None:
         if body.status == "signed":
             raise HTTPException(400, "Use the sign endpoint to sign a decision")
@@ -339,6 +410,25 @@ async def update_adr(
                 "Use the recall-signatures endpoint to reset to draft",
             )
         adr.status = body.status
+
+    if body.linked_card_ids is not None:
+        desired = set(await _resolve_card_ids(db, body.linked_card_ids))
+        result = await db.execute(
+            select(ArchitectureDecisionCard).where(
+                ArchitectureDecisionCard.architecture_decision_id == adr.id
+            )
+        )
+        existing_links = {link.card_id: link for link in result.scalars().all()}
+        for card_id, link in existing_links.items():
+            if card_id not in desired:
+                await db.delete(link)
+        for card_id in desired - existing_links.keys():
+            db.add(
+                ArchitectureDecisionCard(
+                    architecture_decision_id=adr.id,
+                    card_id=card_id,
+                )
+            )
 
     await db.commit()
     await db.refresh(adr)
@@ -390,6 +480,7 @@ async def duplicate_adr(
         consequences=original.consequences,
         alternatives_considered=original.alternatives_considered,
         related_decisions=original.related_decisions or [],
+        attributes=dict(original.attributes or {}),
         created_by=user.id,
     )
     db.add(dup)
@@ -498,6 +589,7 @@ async def request_signatures(
 @router.post("/{adr_id}/sign")
 async def sign_adr(
     adr_id: str,
+    body: ADRSignRequest | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -519,6 +611,8 @@ async def sign_adr(
                 raise HTTPException(400, "You have already signed this decision")
             sig["status"] = "signed"
             sig["signed_at"] = datetime.now(timezone.utc).isoformat()
+            if body and body.comment:
+                sig["comment"] = body.comment
             found = True
             break
 
@@ -774,6 +868,7 @@ async def revise_adr(
         consequences=adr.consequences,
         alternatives_considered=adr.alternatives_considered,
         related_decisions=adr.related_decisions or [],
+        attributes=dict(adr.attributes or {}),
         created_by=user.id,
         revision_number=adr.revision_number + 1,
         parent_id=adr.id,
@@ -875,6 +970,8 @@ async def link_card(
     )
     db.add(link)
     await db.commit()
+
+    await _publish_adr_card_event(db, adr, "adr.linked", uuid.UUID(body.card_id), actor_id=user.id)
     return await _adr_to_dict(db, adr)
 
 
@@ -887,9 +984,12 @@ async def unlink_card(
 ):
     """Unlink an ADR from a card."""
     await PermissionService.require_permission(db, user, "adr.manage")
+    # Read the ADR up front — after the delete + commit its reference/title are
+    # still needed for the card-history event.
+    adr = await _get_adr(db, adr_id)
     result = await db.execute(
         select(ArchitectureDecisionCard).where(
-            ArchitectureDecisionCard.architecture_decision_id == uuid.UUID(adr_id),
+            ArchitectureDecisionCard.architecture_decision_id == adr.id,
             ArchitectureDecisionCard.card_id == uuid.UUID(card_id),
         )
     )
@@ -898,6 +998,8 @@ async def unlink_card(
         raise HTTPException(404, "Link not found")
     await db.delete(link)
     await db.commit()
+
+    await _publish_adr_card_event(db, adr, "adr.unlinked", uuid.UUID(card_id), actor_id=user.id)
 
 
 # ---------------------------------------------------------------------------
@@ -913,13 +1015,17 @@ async def list_adrs_for_card(
 ):
     """Get all ADRs linked to a specific card."""
     await PermissionService.require_permission(db, user, "adr.view")
+    try:
+        cid = uuid.UUID(card_id)
+    except ValueError as exc:
+        raise HTTPException(400, "Invalid card id") from exc
     stmt = (
         select(ArchitectureDecision)
         .join(
             ArchitectureDecisionCard,
             ArchitectureDecisionCard.architecture_decision_id == ArchitectureDecision.id,
         )
-        .where(ArchitectureDecisionCard.card_id == uuid.UUID(card_id))
+        .where(ArchitectureDecisionCard.card_id == cid)
         .order_by(ArchitectureDecision.reference_number)
     )
     result = await db.execute(stmt)

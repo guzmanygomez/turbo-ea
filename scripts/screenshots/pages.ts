@@ -8,6 +8,10 @@
  * `docs/assets/img/{locale}/`.
  */
 
+import * as fs from "fs";
+import * as path from "path";
+import { fileURLToPath } from "url";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -62,11 +66,88 @@ export const CARD_LOOKUPS = {
   sampleApp: { name: "SAP S/4HANA", type: "Application" },
   sampleInitiative: { name: "SAP S/4HANA Migration", type: "Initiative" },
   sampleProcess: { name: "Order to Cash", type: "BusinessProcess" },
+  // An L1 capability whose sub-capabilities carry the relations — used for the
+  // "+N in sub-items" roll-up shots. Chosen because its descendants span two
+  // application subtypes, so the drawer shows real grouping rather than one
+  // undifferentiated list.
+  sampleParentCapability: { name: "Service & After-Sales", type: "BusinessCapability" },
 } as const;
+
+// ---------------------------------------------------------------------------
+// Locale-aware label lookup
+// ---------------------------------------------------------------------------
+
+/**
+ * Locales the capture pipeline covers.
+ *
+ * Keep in sync with `SUPPORTED_LOCALES` (frontend/src/i18n/index.ts), the
+ * backend allow-lists in api/v1/{users,settings}.py, and the `locales` default
+ * in capture.ts.
+ */
+export const LOCALES = [
+  "en", "de", "fr", "es", "it", "pt", "zh", "ru", "da", "ar",
+] as const;
+
+const I18N_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "frontend",
+  "src",
+  "i18n",
+  "locales"
+);
+
+const nsCache = new Map<string, Record<string, string>>();
+
+/** Load (and memoise) one locale's translation namespace.  Keys are flat/dotted. */
+function loadNamespace(locale: string, ns: string): Record<string, string> {
+  const cacheKey = `${locale}/${ns}`;
+  let parsed = nsCache.get(cacheKey);
+  if (!parsed) {
+    const file = path.join(I18N_ROOT, locale, `${ns}.json`);
+    parsed = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, string>;
+    nsCache.set(cacheKey, parsed);
+  }
+  return parsed;
+}
+
+/**
+ * Every distinct translation of one or more `namespace:key` refs, across all
+ * supported locales.
+ *
+ * Selectors OR every variant together, so the capture never needs to know which
+ * locale is active — and adding a locale to `LOCALES` is all it takes for its
+ * labels to be matched. The previous approach hardcoded the strings, which meant
+ * a new locale's tabs silently failed to click (the click is only a WARNING) and
+ * the screenshot captured whatever tab happened to be open.
+ */
+function i18nLabels(...refs: string[]): string[] {
+  const out = new Set<string>();
+  for (const ref of refs) {
+    const sep = ref.indexOf(":");
+    const ns = ref.slice(0, sep);
+    const key = ref.slice(sep + 1);
+    for (const locale of LOCALES) {
+      const value = loadNamespace(locale, ns)[key];
+      if (value) out.add(value);
+    }
+  }
+  return [...out];
+}
 
 // ---------------------------------------------------------------------------
 // Shared click-selector helpers (all locale variants for tab/button labels)
 // ---------------------------------------------------------------------------
+
+/**
+ * Escape a label for use inside a double-quoted Playwright `:has-text("…")`.
+ * Escape \ before " — the order matters so a trailing backslash can't turn into
+ * \\" and close the string literal early.
+ */
+function hasTextArg(label: string): string {
+  return label.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
 
 /** Build a comma-separated has-text selector chain for a tab across locales. */
 function tabSelector(...labels: string[]): string {
@@ -74,81 +155,46 @@ function tabSelector(...labels: string[]): string {
   // Use double-quoted :has-text(...) so labels containing apostrophes
   // (e.g. "Vue d'ensemble", "Décisions d'architecture") parse correctly.
   return labels
-    .flatMap((l) => {
-      // Escape \ before " — the order matters so a trailing backslash can't
-      // turn into \\" and close the string literal early.
-      const escaped = l.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-      return [
-        `[role='tablist'] [role='tab']:has-text("${escaped}")`,
-        `[role='tablist'] button:has-text("${escaped}")`,
-      ];
-    })
+    .flatMap((l) => [
+      `[role='tablist'] [role='tab']:has-text("${hasTextArg(l)}")`,
+      `[role='tablist'] button:has-text("${hasTextArg(l)}")`,
+    ])
     .join(", ");
 }
 
-const TAB_COMMENTS = tabSelector(
-  "Comments", "Kommentare", "Commentaires", "Comentarios",
-  "Commenti", "Comentários", "评论", "Комментарии",
-);
+const TAB_COMMENTS = tabSelector(...i18nLabels("cards:tabs.comments"));
 const TAB_TODOS = tabSelector(
-  "Todos", "Aufgaben", "Tâches", "Tareas", "Attività", "Tarefas", "待办事项", "Задачи",
+  ...i18nLabels("cards:tabs.todos", "common:todos.tabs.todos")
 );
-const TAB_STAKEHOLDERS = tabSelector(
-  "Stakeholders", "Stakeholder", "Parties prenantes", "Partes interesadas",
-  "Partes interessadas", "利益相关者", "Заинтересованные лица",
-);
-const TAB_HISTORY = tabSelector(
-  "History", "Historie", "Historique", "Historial",
-  "Cronologia", "Histórico", "历史", "История",
-);
-const TAB_BPM_DASHBOARD = tabSelector(
-  "Dashboard", "Tableau de bord", "Panel de Control", "Painel", "仪表盘", "Панель управления",
-);
-const TAB_METAMODEL_GRAPH = tabSelector(
-  "Metamodel Graph", "Metamodell-Graph", "Graphe du métamodèle",
-  "Grafo del metamodelo", "Grafo metamodello", "Grafo do metamodelo", "元模型图",
-  "Граф метамодели",
-);
-const TAB_ROLES = tabSelector(
-  "Roles", "Rollen", "Rôles", "Ruoli", "Papéis", "角色", "Роли",
-);
+const TAB_STAKEHOLDERS = tabSelector(...i18nLabels("cards:tabs.stakeholders"));
+const TAB_HISTORY = tabSelector(...i18nLabels("cards:tabs.history"));
+const TAB_BPM_DASHBOARD = tabSelector(...i18nLabels("bpm:tabs.dashboard"));
+const TAB_METAMODEL_GRAPH = tabSelector(...i18nLabels("admin:metamodel.tabs.graph"));
+const TAB_ROLES = tabSelector(...i18nLabels("admin:users.tabs.roles"));
 const TAB_RESOURCES = tabSelector(
-  "Resources", "Ressourcen", "Ressources", "Recursos",
-  "Risorse", "资源", "Ресурсы",
+  ...i18nLabels(
+    "cards:tabs.resources",
+    "admin:settings.tabs.resources",
+    "admin:metamodel.tabs.resources"
+  )
 );
-const TAB_SOAW = tabSelector("SoAW");
+const TAB_SOAW = tabSelector(...i18nLabels("cards:tabs.soaw", "delivery:soaw.label"));
 const TAB_COMPLIANCE = tabSelector(
-  "Compliance", "Conformité", "Cumplimiento", "Conformità",
-  "Conformidade", "合规", "Соответствие",
+  ...i18nLabels("cards:tabs.compliance", "admin:compliance_tab_compliance")
 );
-const TAB_PPM_OVERVIEW = tabSelector(
-  "Overview", "Übersicht", "Vue d'ensemble", "Resumen",
-  "Panoramica", "Visão geral", "概览", "Обзор",
-);
-const TAB_PPM_STATUS_REPORTS = tabSelector(
-  "Status Reports", "Statusberichte", "Rapports de statut", "Informes de estado",
-  "Rapporti di stato", "Relatórios de estado", "状态报告", "Отчёты о статусе",
-);
-const TAB_PPM_BUDGET = tabSelector(
-  "Budget & Costs", "Budget & Kosten", "Budget et coûts", "Presupuesto y costes",
-  "Budget e costi", "Orçamento e custos", "预算与成本", "Бюджет и затраты",
-);
-const TAB_PPM_RISK = tabSelector(
-  "Risk Management", "Risikomanagement", "Gestion des risques", "Gestión de riesgos",
-  "Gestione dei rischi", "Gestão de riscos", "风险管理", "Управление рисками",
-);
-const TAB_PPM_TASKS = tabSelector(
-  "Tasks", "Aufgaben", "Tâches", "Tareas",
-  "Attività", "Tarefas", "任务", "Задачи",
-);
-// "Gantt" stays Latin in en/de/fr/es/it/pt but transliterates in zh/ru.
-const TAB_PPM_GANTT = tabSelector("Gantt", "甘特图", "Гантт");
-const BTN_CREATE = [
-  "button:has-text('Create')", "button:has-text('Erstellen')",
-  "button:has-text('Créer')", "button:has-text('Crear')",
-  "button:has-text('Crea')", "button:has-text('Criar')", "button:has-text('创建')",
-  "button:has-text('Создать')",
-].join(", ");
+const TAB_PPM_OVERVIEW = tabSelector(...i18nLabels("ppm:overview"));
+const TAB_PPM_STATUS_REPORTS = tabSelector(...i18nLabels("ppm:statusReports"));
+const TAB_PPM_BUDGET = tabSelector(...i18nLabels("ppm:budgetAndCosts"));
+const TAB_PPM_RISK = tabSelector(...i18nLabels("ppm:riskManagement"));
+const TAB_PPM_TASKS = tabSelector(...i18nLabels("ppm:tasks"));
+const TAB_PPM_GANTT = tabSelector(...i18nLabels("ppm:gantt"));
+const BTN_CREATE = i18nLabels("common:actions.create", "nav:create")
+  .map((l) => `button:has-text("${hasTextArg(l)}")`)
+  .join(", ");
+/** Top navbar "Reports" menu button, across locales. */
+const NAV_REPORTS = i18nLabels("nav:reports")
+  .map((l) => `.MuiToolbar-root button:has-text("${hasTextArg(l)}")`)
+  .join(", ");
 
 // ---------------------------------------------------------------------------
 // Docs screenshots (docs/assets/img/{locale}/)
@@ -198,22 +244,10 @@ export const DOC_PAGES: PageDef[] = [
   },
 
   // ── Inventory ──────────────────────────────────────────────────────────
-  {
-    id: "03_inventory",
-    route: "/inventory",
-    waitFor: ".ag-root",
-    actions: [{ type: "wait", ms: 600 }],
-    filenames: {
-      en: "03_inventory",
-      de: "03_inventar",
-      fr: "03_inventaire",
-      es: "03_inventario",
-      it: "03_inventario",
-      pt: "03_inventario",
-      zh: "03_inventory",
-      ru: "03_inventarizatsiya",
-    },
-  },
+  // NOTE: the plain `03_inventory` grid shot was removed — `23_inventory_filters`
+  // shows the same grid *plus* the filter sidebar and is what the Inventory guide
+  // actually embeds, so `03` was captured in every locale but referenced nowhere,
+  // violating the two-way pages.ts ↔ docs contract in CLAUDE.md.
 
   // ── Card Detail ────────────────────────────────────────────────────────
   {
@@ -321,7 +355,7 @@ export const DOC_PAGES: PageDef[] = [
     actions: [
       { type: "wait", ms: 600 },
       // Click the Reports dropdown button in the nav bar to show the menu
-      { type: "click", selector: ".MuiToolbar-root button:has-text('Reports'), .MuiToolbar-root button:has-text('Berichte'), .MuiToolbar-root button:has-text('Rapports'), .MuiToolbar-root button:has-text('Informes'), .MuiToolbar-root button:has-text('Report'), .MuiToolbar-root button:has-text('Relatórios'), .MuiToolbar-root button:has-text('报告'), .MuiToolbar-root button:has-text('Отчёты')" },
+      { type: "click", selector: NAV_REPORTS },
       { type: "wait", ms: 400 },
     ],
     filenames: {
@@ -894,7 +928,9 @@ export const DOC_PAGES: PageDef[] = [
     id: "35_report_matrix",
     route: "/reports/matrix",
     waitFor: ".MuiPaper-root",
-    actions: [{ type: "wait", ms: 800 }],
+    // Longer than most: the filter bar and the gap tiles settle after the
+    // metamodel and the matrix payload have both landed.
+    actions: [{ type: "wait", ms: 1200 }],
     filenames: {
       en: "35_report_matrix",
       de: "35_bericht_matrix",
@@ -906,7 +942,6 @@ export const DOC_PAGES: PageDef[] = [
       ru: "35_otchet_matritsa",
     },
   },
-
   // ── Saved Reports ───────────────────────────────────────────────────────
   {
     id: "36_saved_reports",
@@ -1405,15 +1440,105 @@ export const DOC_PAGES: PageDef[] = [
       {
         type: "click",
         selector: tabSelector(
-          "Workspace transfer", "Workspace-Transfer", "Transfert d'espace de travail",
-          "Transferencia de espacio de trabajo", "Trasferimento workspace",
-          "Transferência de workspace", "工作区迁移", "Перенос рабочей области",
+          ...i18nLabels("admin:settings.tabs.workspaceTransfer")
         ),
       },
       { type: "wait", ms: 600 },
     ],
     filenames: {
       en: "58_workspace_transfer",
+      de: "58_workspace_transfer",
+      fr: "58_transfert_espace_travail",
+      es: "58_transferencia_espacio_trabajo",
+      it: "58_trasferimento_workspace",
+      pt: "58_transferencia_workspace",
+      zh: "58_workspace_transfer",
+      ru: "58_perenos_rabochey_oblasti",
+    },
+  },
+
+  // ── Card Detail: relations rolled up from sub-items ─────────────────────
+  // Both shots use locale-independent selectors: the Relations accordion is
+  // found by its Material Symbols ligature ("hub" is the icon's text content),
+  // and the roll-up chip by its `info` colour class — the only info-coloured
+  // chip in the section. Label text would need all 8 locales.
+  {
+    id: "59_card_subitem_chip",
+    route: "/cards/{{cardId:sampleParentCapability}}",
+    waitFor: "[data-testid='card-detail'], [class*='CardDetail'], h5, h4",
+    actions: [
+      { type: "wait", ms: 600 },
+      {
+        type: "click",
+        selector:
+          ".MuiAccordionSummary-root:has(span.material-symbols-outlined:text-is('hub'))",
+      },
+      { type: "wait", ms: 800 },
+      {
+        type: "scroll",
+        target: ".MuiAccordionSummary-root:has(span.material-symbols-outlined:text-is('hub'))",
+      },
+      { type: "wait", ms: 400 },
+    ],
+    filenames: {
+      en: "59_card_subitem_chip",
+      de: "59_karte_unterelemente_chip",
+      fr: "59_fiche_sous_elements_puce",
+      es: "59_ficha_subelementos_etiqueta",
+      it: "59_scheda_sottoelementi_chip",
+      pt: "59_ficha_subelementos_chip",
+      zh: "59_card_subitem_chip",
+      ru: "59_kartochka_podelementy_chip",
+    },
+  },
+  {
+    id: "60_card_subitem_relations",
+    route: "/cards/{{cardId:sampleParentCapability}}",
+    waitFor: "[data-testid='card-detail'], [class*='CardDetail'], h5, h4",
+    actions: [
+      { type: "wait", ms: 600 },
+      {
+        type: "click",
+        selector:
+          ".MuiAccordionSummary-root:has(span.material-symbols-outlined:text-is('hub'))",
+      },
+      { type: "wait", ms: 800 },
+      // Info-coloured chips are the roll-ups, one per relation group, in group
+      // order: Objective, Initiative, Application, … — index 2 is the
+      // Applications roll-up, the richest one on this demo card.
+      { type: "click", selector: ".MuiChip-outlinedInfo", nth: 2 },
+      { type: "wait", ms: 900 },
+    ],
+    filenames: {
+      en: "60_card_subitem_relations",
+      de: "60_karte_unterelemente_beziehungen",
+      fr: "60_fiche_sous_elements_relations",
+      es: "60_ficha_subelementos_relaciones",
+      it: "60_scheda_sottoelementi_relazioni",
+      pt: "60_ficha_subelementos_relacoes",
+      zh: "60_card_subitem_relations",
+      ru: "60_kartochka_podelementy_svyazi",
+    },
+  },
+
+  // ── Admin Settings: Resources (repository-wide file & link management) ──
+  // Wait for the AG Grid root rather than a Paper: the grid mounts after the
+  // /resources + /resources/stats round-trips, and the stat tiles above it
+  // are Papers that would satisfy a `.MuiPaper-root` wait too early.
+  {
+    id: "61_admin_settings_resources",
+    route: "/admin/settings?tab=resources",
+    waitFor: ".ag-root",
+    actions: [{ type: "wait", ms: 900 }],
+    filenames: {
+      en: "61_admin_settings_resources",
+      de: "61_admin_einstellungen_ressourcen",
+      fr: "61_admin_parametres_ressources",
+      es: "61_admin_config_recursos",
+      it: "61_admin_impostazioni_risorse",
+      pt: "61_admin_config_recursos",
+      zh: "61_admin_settings_resources",
+      ru: "61_admin_nastroyki_resursy",
     },
   },
 

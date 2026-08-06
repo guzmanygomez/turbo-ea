@@ -16,9 +16,10 @@ import CircularProgress from "@mui/material/CircularProgress";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme, alpha } from "@mui/material/styles";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import MaterialSymbol from "@/components/MaterialSymbol";
 import { api } from "@/api/client";
+import { useAbortableEffect } from "@/hooks/useLatestRequest";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { useMetamodel } from "@/hooks/useMetamodel";
@@ -222,7 +223,7 @@ export default function PpmPortfolio() {
   // ── Report hover popover state ──
   const [reportAnchorEl, setReportAnchorEl] = useState<HTMLElement | null>(null);
   const [hoveredReport, setHoveredReport] = useState<PpmStatusReport | null>(null);
-  const leaveTimer = useRef<ReturnType<typeof setTimeout>>();
+  const leaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const timelineRef = useRef<HTMLDivElement>(null);
 
   // After every render / resize, hide quarter labels that overlap
@@ -283,18 +284,25 @@ export default function PpmPortfolio() {
     api.get<PpmGroupOption[]>("/reports/ppm/group-options").then(setGroupOptions);
   }, []);
 
-  useEffect(() => {
-    setLoading(true);
-    Promise.all([
-      api.get<PpmGanttItem[]>(`/reports/ppm/gantt?group_by=${groupBy}`),
-      api.get<PpmDashboardData>("/reports/ppm/dashboard"),
-    ])
-      .then(([g, d]) => {
+  useAbortableEffect(
+    async ({ signal, isCurrent }) => {
+      setLoading(true);
+      try {
+        const [g, d] = await Promise.all([
+          api.get<PpmGanttItem[]>(`/reports/ppm/gantt?group_by=${groupBy}`, { signal }),
+          api.get<PpmDashboardData>("/reports/ppm/dashboard", { signal }),
+        ]);
+        if (!isCurrent()) return;
         setItems(g);
         setDashboard(d);
-      })
-      .finally(() => setLoading(false));
-  }, [groupBy]);
+      } finally {
+        // Only the winner owns the spinner — changing grouping twice quickly
+        // used to let the first response settle the UI (#882).
+        if (isCurrent()) setLoading(false);
+      }
+    },
+    [groupBy],
+  );
 
 
   const typeConfig = getType("Initiative");
@@ -415,7 +423,7 @@ export default function PpmPortfolio() {
   const renderRow = (item: PpmGanttItem) => {
     const rep = item.latest_report;
     const pm =
-      item.stakeholders.find((s) => s.role_key === "it_project_manager") ||
+      item.stakeholders.find((s) => s.role_key === "itProjectManager") ||
       item.stakeholders.find((s) => s.role_key === "responsible");
 
     const plan = `${fmtQuarter(item.start_date)} / ${fmtQuarter(item.end_date)}`;
@@ -537,7 +545,7 @@ export default function PpmPortfolio() {
   const renderMobileCard = (item: PpmGanttItem) => {
     const rep = item.latest_report;
     const pm =
-      item.stakeholders.find((s) => s.role_key === "it_project_manager") ||
+      item.stakeholders.find((s) => s.role_key === "itProjectManager") ||
       item.stakeholders.find((s) => s.role_key === "responsible");
     const plan = `${fmtQuarter(item.start_date)} \u2013 ${fmtQuarter(item.end_date)}`;
 
@@ -1130,24 +1138,13 @@ export default function PpmPortfolio() {
                 return (
                   <Box key={field} display="flex" alignItems="center" gap={0.5}>
                     {ragDot(value, 14)}
-                    <Box>
-                      <Typography
-                        variant="caption"
-                        sx={{ fontSize: "0.7rem", display: "block", lineHeight: 1.2 }}
-                      >
-                        {label}
-                      </Typography>
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          fontSize: "0.65rem",
-                          color: RAG[value] || "text.secondary",
-                          fontWeight: 600,
-                        }}
-                      >
-                        {t(RAG_LABEL[value] || "health_noReport")}
-                      </Typography>
-                    </Box>
+                    <Typography
+                      variant="caption"
+                      sx={{ fontSize: "0.7rem", lineHeight: 1.2 }}
+                      title={t(RAG_LABEL[value] || "health_noReport")}
+                    >
+                      {label}
+                    </Typography>
                   </Box>
                 );
               })}

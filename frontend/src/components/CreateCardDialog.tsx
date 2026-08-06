@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
+import { DateField } from "@/components/DateField";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -35,10 +36,11 @@ import {
   useSubtypeLabel,
 } from "@/hooks/useResolveLabel";
 import { useAiStatus } from "@/hooks/useAiStatus";
+import { useAbortableEffect } from "@/hooks/useLatestRequest";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { api, ApiError } from "@/api/client";
 import type {
   FieldDef,
-  EolCycle,
   EolProductMatch,
   AiSuggestResponse,
   TagGroup,
@@ -201,33 +203,41 @@ export default function CreateCardDialog({
     }
   }, [open, initialType]);
 
-  // Auto-search EOL when name changes (debounced)
-  useEffect(() => {
-    if (!isEolEligible || !name.trim() || name.trim().length < 2) {
-      setEolSuggestions([]);
-      setEolAutoSearchDone(false);
-      return;
-    }
-    // Don't auto-search if already linked
-    if (eolProduct && eolCycle) return;
+  // Auto-search EOL when name changes (debounced). Cancelling the timer never
+  // cancelled a dispatched request, so suggestions for a half-typed name could
+  // land last and replace the ones for the finished name (#882).
+  const [debouncedName] = useDebouncedValue(name, 600);
+  useAbortableEffect(
+    async ({ signal, isCurrent }) => {
+      const trimmed = debouncedName.trim();
+      if (!isEolEligible || !trimmed || trimmed.length < 2) {
+        setEolSuggestions([]);
+        setEolAutoSearchDone(false);
+        setEolSearching(false);
+        return;
+      }
+      // Don't auto-search if already linked
+      if (eolProduct && eolCycle) return;
 
-    const timer = setTimeout(async () => {
       setEolSearching(true);
       try {
         const results = await api.get<EolProductMatch[]>(
-          `/eol/products/fuzzy?search=${encodeURIComponent(name.trim())}&limit=5`
+          `/eol/products/fuzzy?search=${encodeURIComponent(trimmed)}&limit=5`,
+          { signal },
         );
+        if (!isCurrent()) return;
         setEolSuggestions(results);
         setEolAutoSearchDone(true);
       } catch {
+        if (!isCurrent()) return;
         setEolSuggestions([]);
         setEolAutoSearchDone(true);
       } finally {
-        setEolSearching(false);
+        if (isCurrent()) setEolSearching(false);
       }
-    }, 600);
-    return () => clearTimeout(timer);
-  }, [name, isEolEligible, eolProduct, eolCycle]);
+    },
+    [debouncedName, isEolEligible, eolProduct, eolCycle],
+  );
 
   const setAttr = (key: string, value: unknown) => {
     setAttributes((prev) => ({ ...prev, [key]: value }));
@@ -287,29 +297,6 @@ export default function CreateCardDialog({
         finalAttrs.eol_cycle = eolCycle;
       }
 
-      // For ITComponent: sync lifecycle dates from EOL data
-      let lifecycle: Record<string, string> | undefined;
-      if (selectedType === "ITComponent" && eolProduct && eolCycle) {
-        try {
-          const cycles = await api.get<EolCycle[]>(
-            `/eol/products/${encodeURIComponent(eolProduct)}`
-          );
-          const match = cycles.find(
-            (c) => String(c.cycle) === String(eolCycle)
-          );
-          if (match) {
-            lifecycle = {};
-            if (match.releaseDate) lifecycle.active = match.releaseDate;
-            if (typeof match.support === "string")
-              lifecycle.phaseOut = match.support;
-            if (typeof match.eol === "string")
-              lifecycle.endOfLife = match.eol;
-          }
-        } catch {
-          // If fetching cycles fails, just create without lifecycle
-        }
-      }
-
       // Defensive: never persist an orphan vendor text attribute. Provider
       // linkage is owned by the relation created below.
       delete finalAttrs.vendor;
@@ -322,7 +309,6 @@ export default function CreateCardDialog({
         parent_id: parentCard?.id || undefined,
         attributes:
           Object.keys(finalAttrs).length > 0 ? finalAttrs : undefined,
-        lifecycle,
       });
       if (tagIds.length > 0) {
         try {
@@ -448,14 +434,12 @@ export default function CreateCardDialog({
 
       case "date":
         return (
-          <TextField
+          <DateField
             key={field.key}
             fullWidth
             label={fieldLabel(field)}
-            type="date"
             value={(attributes[field.key] as string) ?? ""}
-            onChange={(e) => setAttr(field.key, e.target.value || undefined)}
-            InputLabelProps={{ shrink: true }}
+            onChange={(v) => setAttr(field.key, v || undefined)}
             sx={{ mb: 2 }}
           />
         );

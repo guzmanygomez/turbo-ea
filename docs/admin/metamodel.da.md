@@ -2,7 +2,7 @@
 
 **Metamodellen** definerer hele platformens datastruktur — hvilke typer kort der findes, hvilke felter de har, hvordan de relaterer til hinanden, og hvordan kortdetaljesider er opbygget. Alt er **datadrevet**: du konfigurerer metamodellen gennem admin-UI'et, ikke ved at ændre kode.
 
-![Metamodel-konfiguration](../assets/img/en/20_admin_metamodel.png)
+![Metamodel-konfiguration](../assets/img/da/20_admin_metamodel.png)
 
 Naviger til **Admin > Metamodel** for at få adgang til metamodel-editoren. Den har syv faneblade: **Korttyper**, **Relationstyper**, **Beregninger**, **Tags**, **Metamodel-graf**, **EA-principper** og **Compliance-reguleringer**.
 
@@ -34,6 +34,15 @@ Klik på **+ Ny type** for at oprette en brugerdefineret korttype. Konfigurer:
 
 Klik på en hvilken som helst type for at åbne **Typedetaljepanelet**. Her kan du konfigurere:
 
+#### Typefarve
+
+Hver korttype — inklusive de indbyggede — har en farve, der kan tilpasses, og som bruges i inventaret, rapporter, afhængighedsvisninger og diagrammer. Det gør det muligt at tilpasse Turbo EA til organisationens visuelle konventioner (for eksempel TOGAF/ArchiMate-paletter: forretningselementer i gul/orange, applikationer i blå).
+
+- Vælg en farve med farveprøven i panelet. Der vises et hint, når den valgte farve har meget lav kontrast mod lyse eller mørke baggrunde.
+- Indbyggede typer viser en **nulstil**-knap ved siden af farveprøven, når farven afviger fra Turbo EA-standarden, så du altid kan vende tilbage til standardpaletten.
+- Tekst oven på typefarver (chips, diagramformer) skifter automatisk mellem sort og hvid for læsbarhed, både i lys og mørk tilstand.
+- Vælgeren viser en **live-forhåndsvisning** ved siden af paletten: typenavn, chip, kortikon, undertype, kort-ID-pille og en afhængighedsvisningsnode, gengivet én gang i lys og én gang i mørk tilstand, og opdateret mens du vælger.
+
 #### Felter
 
 Felter definerer de brugerdefinerede egenskaber, der er tilgængelige på kort af denne type. Hvert felt har:
@@ -60,6 +69,17 @@ Felter er organiseret i **sektioner** på kortdetaljesiden. Du kan:
 - Omarranger felter inden for et afsnit ved at trække, og flyt et felt til et andet afsnit via dets **flyt**-handling
 
 Det særlige sektionsnavn `__description` tilføjer felter til Beskrivelsessektionen af kortdetaljesiden.
+
+#### Kort-ID
+
+Slå **generering af kort-ID** til for at give kort af denne type et stabilt, læsbart ID (for eksempel `APP-00001`). ID'et vises som en kopiér-pille ved siden af kortets type på detaljesiden, som en valgfri (sorterbar og filtrerbar) kolonne i inventaret, i Excel-eksporter og i formler for beregnede felter (via `data.reference`).
+
+**Nummeret genereres altid automatisk**; du styrer kun **præfikset**. Når du slår til, vises et foreslået præfiks (udledt af typenavnet, f.eks. `APP-`) som tekst — klik på blyanten for at ændre det. To indstillinger justerer nummeret:
+
+- **Start ved** — det første nummer i serien (standard `1`).
+- **Min. cifre** — bredden af nuludfyldningen (standard `5`), så `1` vises som `00001`. Det er et minimum; numrene bliver længere, når de overstiger det. Et **Eksempel** viser live det første ID.
+
+ID'er er **globalt unikke, skrivebeskyttede og genbruges eller ændres aldrig**. Nummersekvensen føres **pr. præfiks på tværs af hele arbejdsområdet**, så to typer med samme præfiks danner én sammenhængende, kollisionsfri serie. Når et kort af denne type har et ID, låses hele formatet — præfiks, start og min. cifre — (felterne bliver skrivebeskyttede); du kan stadig slå generering fra. Lagring tildeler aldrig ID'er til eksisterende kort; brug den dedikerede **Generér ID'er**-knap til at udfylde efterslæbet efter behov (med statuslinje og bekræftelse).
 
 #### Datakvalitetsscore
 
@@ -97,6 +117,15 @@ Når der ikke er valgt nogen undertype på et kort (eller typen ikke har nogen u
 
 Definer brugerdefinerede roller for denne type (f.eks. "Application Owner", "Technical Owner"). Hver rolle bærer **tilladelser på kortniveau**, der kombineres med brugerens applikationsrolle, når der tilgås et kort. Se [Brugere og roller](users.md) for mere om tilladelsesmodellen.
 
+Hver rolle har en **nøgle** (den identifikator der gemmes på kort, og som bruges af `stakeholder:<rollenøgle>`-import/eksportkolonnerne) og en **etiket** (det brugerne ser). Nøglen følger samme konvention som enhver anden metamodelnøgle — kun bogstaver og cifre, begyndende med et bogstav, 3–50 tegn, efter konvention camelCase som `businessArchitect`. Den udfyldes automatisk ud fra etiketten, så du sjældent selv skal skrive en.
+
+Roller kan fjernes på to måder:
+
+- **Arkivér** — rollen bliver på de kort der allerede bruger den, men kan ikke længere tildeles, og den giver ikke længere sine rettigheder på kortniveau. Arkiverede roller vises bag **Vis arkiverede**-kontakten og kan gendannes når som helst. Det er det rigtige valg for en rolle der reelt har været brugt.
+- **Slet** — permanent, og tilbydes kun så længe rollen ikke er i brug. Turbo EA nægter at slette en rolle som nogen har på et kort af denne type, som en undersøgelse bruger, eller som er typens sidste aktive rolle; bekræftelsesdialogen oplyser hvilken af delene der gælder og tilbyder at arkivere den i stedet. Sådan rydder du op i en rolle der blev oprettet ved en fejl.
+
+En rolles nøgle kan rettes, så længe **ingen har rollen** — undersøgelser der bruger den følger automatisk med omdøbningen, og det er også i orden at omdøbe en types eneste rolle, da rollen overlever det. Så snart nogen har rollen, låses nøglen, og feltet forklarer hvorfor. Roller oprettet før denne konvention beholder den nøgle de allerede har og fungerer fortsat; kun en ny eller ændret nøgle kontrolleres.
+
 #### Oversættelser
 
 Klik på knappen **Oversæt** i typepanelets værktøjslinje for at åbne **Oversættelsesdialogen**. Her kan du levere oversættelser for alle metamodel-etiketter i hvert understøttet sprog:
@@ -128,6 +157,10 @@ Relationstyper definerer de tilladte forbindelser mellem korttyper. Hver relatio
 | **Kardinalitet** | n:m (mange-til-mange) eller 1:n (en-til-mange) |
 
 Klik på **+ Ny relationstype** for at oprette en relation, eller klik på en eksisterende for at redigere dens etiketter og egenskaber.
+
+Felterne **Etiket** og **Omvendt etiket** skrives på det sprog, du bruger lige nu — feltets betegnelse viser hvilket (for eksempel *Etiket (Dansk)*). Når du omdøber en relation, opdateres det sprog alle steder, hvor udsagnsordet optræder: afsnittet **Relationer** på et kort, inventarets relationskolonner, rapporter, portaler og diagrammer. Andre sprog beholder deres egen ordlyd, indtil du oversætter dem.
+
+Brug **Administrér oversættelser** øverst på fanen Relationstyper til at oversætte alle relationers udsagnsord til hvert aktiveret sprog på én gang. Vælg en sprogfane, udfyld ordlyden ved siden af den engelske kilde, og gem — tælleren på hver fane viser, hvor mange udsagnsord det sprog stadig mangler. Engelsk står ikke her, fordi det er ordlyden på selve relationen; et uoversat udsagnsord falder tilbage til den.
 
 ### Relationsegenskaber
 
@@ -189,7 +222,7 @@ For eksempel ville et "Køb SaaS"-princip få AI'en til at flage on-premise- ell
 
 ## Metamodel-graf
 
-![Metamodel-grafvisualisering](../assets/img/en/38_metamodel_graph.png)
+![Metamodel-grafvisualisering](../assets/img/da/38_metamodel_graph.png)
 
 Fanebladet **Metamodel-graf** viser et visuelt SVG-diagram over alle korttyper og deres relationstyper. Dette er en skrivebeskyttet visualisering, der hjælper dig med at forstå forbindelserne i din metamodel ved et blik.
 
@@ -219,7 +252,7 @@ Compliance-scanneren og risiko-forfremmelsesflowet fungerer, **selv når ingen A
 
 For hver korttype styrer afsnittet **Layout** i typepanelet, hvordan kortdetaljesiden er struktureret:
 
-- **Sektionsrækkefølge** — Træk sektioner (Beskrivelse, EOL, Livscyklus, Hierarki, Relationer og brugerdefinerede sektioner) for at omarrangere dem
+- **Sektionsrækkefølge** — Træk sektioner (Beskrivelse, EOL, Livscyklus, Hierarki, Tags, Relationer og brugerdefinerede sektioner) for at omarrangere dem
 - **Synlighed** — Skjul sektioner, der ikke er relevante for en type
 - **Standardudvidelse** — Vælg, om hver sektion starter udvidet eller sammenklappet
 - **Kolonnelayout** — Indstil 1 eller 2 kolonner pr. brugerdefineret sektion

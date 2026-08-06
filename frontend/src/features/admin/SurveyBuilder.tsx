@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
@@ -26,7 +26,10 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import MaterialSymbol from "@/components/MaterialSymbol";
+import { useExtensionFieldTypes } from "@/lib/extensionHost";
 import { api } from "@/api/client";
+import { useAbortableEffect } from "@/hooks/useLatestRequest";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useMetamodel } from "@/hooks/useMetamodel";
 import {
   useTypeLabel,
@@ -35,6 +38,7 @@ import {
   useOptionLabel,
 } from "@/hooks/useResolveLabel";
 import { FIELD_TYPE_OPTIONS } from "@/features/admin/metamodel/constants";
+import { readableTextColor } from "@/lib/color";
 import type {
   Survey,
   SurveyField,
@@ -50,7 +54,13 @@ export default function SurveyBuilder() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { types, relationTypes } = useMetamodel();
+  const extFieldTypes = useExtensionFieldTypes();
   const typeLabel = useTypeLabel();
+  // An ext.* field whose extension isn't installed+enabled+licensed is absent
+  // from the registry — surveying it will degrade to a plain input (and, if the
+  // extension is uninstalled, collect into an orphan attribute). Warn the admin.
+  const isInactiveExtType = (fieldType: string) =>
+    fieldType.startsWith("ext.") && !extFieldTypes[fieldType];
   const relLabel = useRelationLabel();
   const fieldLabel = useFieldLabel();
   const optLabel = useOptionLabel();
@@ -136,43 +146,51 @@ export default function SurveyBuilder() {
     api.get<StakeholderRoleDef[]>("/stakeholder-roles").then(setRoles).catch(() => {});
   }, []);
 
-  // Search cards for related filter
-  useEffect(() => {
-    if (!relatedSearch || relatedSearch.length < 2) {
-      setRelatedOptions([]);
-      return;
-    }
-    const timer = setTimeout(async () => {
+  // Search cards for related filter. `clearTimeout` only cancelled the timer —
+  // once a request was dispatched nothing stopped a stale response from
+  // replacing newer results (#882).
+  const [debouncedRelatedSearch] = useDebouncedValue(relatedSearch, 300);
+  useAbortableEffect(
+    async ({ signal, isCurrent }) => {
+      if (!debouncedRelatedSearch || debouncedRelatedSearch.length < 2) {
+        setRelatedOptions([]);
+        return;
+      }
       try {
         const res = await api.get<{ items: Card[] }>(
-          `/cards?search=${encodeURIComponent(relatedSearch)}&page_size=20`,
+          `/cards?search=${encodeURIComponent(debouncedRelatedSearch)}&page_size=20`,
+          { signal },
         );
+        if (!isCurrent()) return;
         setRelatedOptions(res.items);
       } catch {
-        // ignore
+        // ignore — empty option list
       }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [relatedSearch]);
+    },
+    [debouncedRelatedSearch],
+  );
 
   // Search cards for the "specific cards" picker — restricted to the target type
-  useEffect(() => {
-    if (!targetTypeKey || !cardSearch || cardSearch.length < 2) {
-      setCardOptions([]);
-      return;
-    }
-    const timer = setTimeout(async () => {
+  const [debouncedCardSearch] = useDebouncedValue(cardSearch, 300);
+  useAbortableEffect(
+    async ({ signal, isCurrent }) => {
+      if (!targetTypeKey || !debouncedCardSearch || debouncedCardSearch.length < 2) {
+        setCardOptions([]);
+        return;
+      }
       try {
         const res = await api.get<{ items: Card[] }>(
-          `/cards?type=${encodeURIComponent(targetTypeKey)}&search=${encodeURIComponent(cardSearch)}&page_size=20`,
+          `/cards?type=${encodeURIComponent(targetTypeKey)}&search=${encodeURIComponent(debouncedCardSearch)}&page_size=20`,
+          { signal },
         );
+        if (!isCurrent()) return;
         setCardOptions(res.items);
       } catch {
-        // ignore
+        // ignore — empty option list
       }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [cardSearch, targetTypeKey]);
+    },
+    [debouncedCardSearch, targetTypeKey],
+  );
 
   // Hydrate selected items so autocomplete chips render names when editing an existing survey
   useEffect(() => {
@@ -656,7 +674,7 @@ export default function SurveyBuilder() {
                   key={v.id}
                   label={v.name}
                   size="small"
-                  sx={v.color ? { bgcolor: v.color, color: "#fff" } : undefined}
+                  sx={v.color ? { bgcolor: v.color, color: readableTextColor(v.color) } : undefined}
                 />
               ))
             }
@@ -838,7 +856,16 @@ export default function SurveyBuilder() {
                         </TableCell>
                         <TableCell>{f.label}</TableCell>
                         <TableCell>
-                          <Chip label={fieldTypeLabel(f.type)} size="small" variant="outlined" />
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                            <Chip label={fieldTypeLabel(f.type)} size="small" variant="outlined" />
+                            {isInactiveExtType(f.type) && (
+                              <Tooltip title={t("surveyBuilder.fields.inactiveExtType")}>
+                                <Box component="span" sx={{ display: "inline-flex" }}>
+                                  <MaterialSymbol icon="warning" size={16} color="#ed6c02" />
+                                </Box>
+                              </Tooltip>
+                            )}
+                          </Box>
                         </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           {selected && (

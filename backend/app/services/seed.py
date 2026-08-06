@@ -21,6 +21,7 @@ from app.models.relation_type import RelationType
 from app.models.resource_type import ResourceType
 from app.models.role import Role
 from app.models.stakeholder_role_definition import StakeholderRoleDefinition
+from app.services.hierarchy import HIERARCHY_LEVEL_KEY, hierarchy_level_field_def
 
 # ── Reusable option lists ──────────────────────────────────────────────
 
@@ -1803,7 +1804,7 @@ TYPES = [
                 },
             },
             {
-                "key": "it_project_manager",
+                "key": "itProjectManager",
                 "label": "IT Project Manager",
                 "translations": {
                     "label": {
@@ -2806,7 +2807,7 @@ TYPES = [
                 },
             },
             {
-                "key": "process_owner",
+                "key": "processOwner",
                 "label": "Process Owner",
                 "translations": {
                     "label": {
@@ -3931,6 +3932,11 @@ TYPES = [
         },
     },
 ]
+
+# Canonical default color per built-in card type, derived from TYPES so it can
+# never drift from the seed. Serialized as `default_color` on metamodel types to
+# power the admin "reset to default color" affordance (custom types have none).
+DEFAULT_TYPE_COLORS: dict[str, str] = {t["key"]: t.get("color", "#1976d2") for t in TYPES}
 
 
 # ── Relations (from Meta_Model.xml — verbs are the edge labels) ────────
@@ -5615,6 +5621,75 @@ def _inject_english_translations_type(type_def: dict) -> dict:
     return t
 
 
+def _inject_hierarchy_level_into_type(type_def: dict) -> dict:
+    """Append the readonly ``hierarchyLevel`` field to a hierarchical type.
+
+    No-op for non-hierarchical types and for types that already carry a
+    ``hierarchyLevel`` field (never hijack an existing key). Appends to the
+    first section, creating a ``General`` section when the schema is empty.
+    """
+    if not type_def.get("has_hierarchy"):
+        return type_def
+    schema = type_def.get("fields_schema") or []
+    already = any(
+        f.get("key") == HIERARCHY_LEVEL_KEY
+        for s in schema
+        if isinstance(s, dict)
+        for f in s.get("fields", [])
+    )
+    if already:
+        return type_def
+    if schema:
+        schema[0].setdefault("fields", []).append(hierarchy_level_field_def())
+    else:
+        schema = [
+            {
+                "section": "General",
+                "translations": {
+                    "de": "Allgemein",
+                    "fr": "Général",
+                    "es": "General",
+                    "it": "Generale",
+                    "pt": "Geral",
+                    "zh": "常规",
+                    "ru": "Общие",
+                    "da": "Generelt",
+                    "ar": "عام",
+                },
+                "fields": [hierarchy_level_field_def()],
+            }
+        ]
+    type_def["fields_schema"] = schema
+    return type_def
+
+
+def _fill_missing_locales(existing: dict | None, seed: dict | None) -> dict:
+    """Merge a flat ``{locale: text}`` map, **existing wins**.
+
+    On an existing install the seed's job is to *fill gaps*, not to re-assert
+    defaults: ``seed_metamodel`` runs on every startup, so a seed-wins merge
+    silently reverted every translation an admin had entered through the
+    Translations dialog on the next restart. Re-asserting a changed built-in
+    default is what a guarded migration is for (see ``072_restore_business_process_color``).
+    """
+    return {**(seed or {}), **(existing or {})}
+
+
+def _fill_missing_meta_locales(existing: dict | None, seed: dict | None) -> dict:
+    """Same as :func:`_fill_missing_locales` for a two-level ``MetamodelTranslations``.
+
+    The merge has to descend one level: a flat spread would replace a whole
+    ``label`` map as soon as the row carried any property the seed also ships.
+    """
+    merged = {**(existing or {})}
+    for prop, locales in (seed or {}).items():
+        if isinstance(locales, dict):
+            merged[prop] = _fill_missing_locales(merged.get(prop), locales)
+        else:
+            merged.setdefault(prop, locales)
+    return merged
+
+
 def _inject_english_translations_relation(rel_def: dict) -> dict:
     """Copy English labels into the translations JSONB for a relation type."""
     r = rel_def
@@ -5671,7 +5746,7 @@ async def seed_metamodel(db: AsyncSession) -> None:
     ]
     _app_roles = _default_roles + [
         {
-            "key": "technical_application_owner",
+            "key": "technicalApplicationOwner",
             "label": "Technical Application Owner",
             "translations": {
                 "label": {
@@ -5688,7 +5763,7 @@ async def seed_metamodel(db: AsyncSession) -> None:
             },
         },
         {
-            "key": "business_application_owner",
+            "key": "businessApplicationOwner",
             "label": "Business Application Owner",
             "translations": {
                 "label": {
@@ -5714,6 +5789,12 @@ async def seed_metamodel(db: AsyncSession) -> None:
     existing_rels_list = existing_rels_result.scalars().all()
     existing_rels = {r.key for r in existing_rels_list}
 
+    # Inject the built-in hierarchyLevel field into every hierarchical type
+    # (before English-translation injection so the field's "en" label is stamped
+    # like any other field). Existing installs pick it up via migration 123.
+    for t in TYPES:
+        _inject_hierarchy_level_into_type(t)
+
     # Ensure English labels are present in all translation dicts
     for t in TYPES:
         _inject_english_translations_type(t)
@@ -5733,10 +5814,9 @@ async def seed_metamodel(db: AsyncSession) -> None:
                 # Merge type-level translations
                 seed_translations = t.get("translations", {})
                 if seed_translations:
-                    existing.translations = {
-                        **(existing.translations or {}),
-                        **seed_translations,
-                    }
+                    existing.translations = _fill_missing_meta_locales(
+                        existing.translations, seed_translations
+                    )
 
                 # Merge subtype translations + backfill hidden_fields
                 seed_subtypes = t.get("subtypes", [])
@@ -5747,10 +5827,9 @@ async def seed_metamodel(db: AsyncSession) -> None:
                         merged = dict(sub)
                         seed_sub = seed_sub_map.get(sub["key"])
                         if seed_sub and "translations" in seed_sub:
-                            merged["translations"] = {
-                                **merged.get("translations", {}),
-                                **seed_sub["translations"],
-                            }
+                            merged["translations"] = _fill_missing_locales(
+                                merged.get("translations"), seed_sub["translations"]
+                            )
                         # Backfill hidden_fields for existing subtypes
                         merged.setdefault("hidden_fields", [])
                         updated_subtypes.append(merged)
@@ -5772,10 +5851,9 @@ async def seed_metamodel(db: AsyncSession) -> None:
                         merged_sec = dict(sec)
                         # Merge section-level translations
                         if "translations" in seed_sec:
-                            merged_sec["translations"] = {
-                                **merged_sec.get("translations", {}),
-                                **seed_sec["translations"],
-                            }
+                            merged_sec["translations"] = _fill_missing_locales(
+                                merged_sec.get("translations"), seed_sec["translations"]
+                            )
                         # Merge field-level translations
                         seed_field_map = {f["key"]: f for f in seed_sec.get("fields", [])}
                         merged_fields = []
@@ -5784,10 +5862,9 @@ async def seed_metamodel(db: AsyncSession) -> None:
                             if seed_field:
                                 mf = dict(field)
                                 if "translations" in seed_field:
-                                    mf["translations"] = {
-                                        **mf.get("translations", {}),
-                                        **seed_field["translations"],
-                                    }
+                                    mf["translations"] = _fill_missing_locales(
+                                        mf.get("translations"), seed_field["translations"]
+                                    )
                                 # Merge option translations
                                 seed_opts = seed_field.get("options", [])
                                 if seed_opts and mf.get("options"):
@@ -5797,10 +5874,9 @@ async def seed_metamodel(db: AsyncSession) -> None:
                                         seed_opt = seed_opt_map.get(opt["key"])
                                         if seed_opt and "translations" in seed_opt:
                                             mo = dict(opt)
-                                            mo["translations"] = {
-                                                **mo.get("translations", {}),
-                                                **seed_opt["translations"],
-                                            }
+                                            mo["translations"] = _fill_missing_locales(
+                                                mo.get("translations"), seed_opt["translations"]
+                                            )
                                             merged_opts.append(mo)
                                         else:
                                             merged_opts.append(opt)
@@ -5841,8 +5917,21 @@ async def seed_metamodel(db: AsyncSession) -> None:
         )
         db.add(fst)
 
+    existing_rels_by_key = {r.key: r for r in existing_rels_list}
+
     for i, r in enumerate(RELATIONS):
         if r["key"] in existing_rels:
+            # Translations-only backfill for built-in relation types. Verbs,
+            # cardinality and the attributes schema stay as the admin left them —
+            # only locales the row does not already carry are added, which is how
+            # an install seeded before a locale existed (Danish, Arabic) finally
+            # receives its relation verbs.
+            existing_rel = existing_rels_by_key[r["key"]]
+            seed_rel_translations = r.get("translations", {})
+            if existing_rel.built_in and seed_rel_translations:
+                existing_rel.translations = _fill_missing_meta_locales(
+                    existing_rel.translations, seed_rel_translations
+                )
             continue
 
         rt = RelationType(

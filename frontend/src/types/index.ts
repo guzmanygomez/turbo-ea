@@ -152,6 +152,17 @@ export interface StakeholderRoleDef {
   translations?: MetamodelTranslations;
 }
 
+/**
+ * Minimal stakeholder-role payload returned by
+ * `GET /stakeholder-roles?type_key=…` — powers the per-role
+ * "Stakeholders: <role>" inventory columns.
+ */
+export interface StakeholderRoleOption {
+  key: string;
+  label: string;
+  translations?: MetamodelTranslations;
+}
+
 /** Locale-keyed translations for a single property (e.g., label). */
 export type TranslationMap = Record<string, string>;
 
@@ -212,20 +223,25 @@ export interface VisibilityRuleSet {
 
 // ── Field & Section Definitions ───────────────────────────────────
 
+export type BuiltInFieldType =
+  | "text"
+  | "multiline_text"
+  | "number"
+  | "cost"
+  | "boolean"
+  | "date"
+  | "single_select"
+  | "multiple_select"
+  | "url"
+  | "table";
+
 export interface FieldDef {
   key: string;
   label: string;
-  type:
-    | "text"
-    | "multiline_text"
-    | "number"
-    | "cost"
-    | "boolean"
-    | "date"
-    | "single_select"
-    | "multiple_select"
-    | "url"
-    | "table";
+  // A built-in type, or an extension-contributed custom type namespaced
+  // `ext.{key}.*` (e.g. `ext.plus.rating`). The `& {}` keeps autocomplete on the
+  // built-ins while still accepting the open custom-type strings.
+  type: BuiltInFieldType | (string & {});
   options?: FieldOption[];
   columns?: TableColumn[];
   required?: boolean;
@@ -235,6 +251,27 @@ export interface FieldDef {
   column?: 0 | 1;
   translations?: TranslationMap;
   visibility_rules?: VisibilityRuleSet;
+  // Collapsible helper text shown under the field during data entry. Authorable
+  // only when an extension grants `metamodel.field_help`; rendering is
+  // unconditional. `help` is the base (English) string; `helpTranslations` maps
+  // locale → localized help.
+  help?: string;
+  helpTranslations?: TranslationMap;
+  // Optional visual "badge" chip shown next to the field label, and the basis
+  // for a per-section badge filter on the card. Purely a display/UX affordance
+  // — ungated, so any metamodel field (core or extension) may set it. `badge`
+  // is the base (English) string; `badgeTranslations` maps locale → localized
+  // badge.
+  badge?: string;
+  badgeTranslations?: TranslationMap;
+  // Free-form per-field configuration for extension-contributed field types
+  // (e.g. a rating field's `{ min, max }`). Ignored by built-in types.
+  config?: Record<string, unknown>;
+  // Stamped `<extension key>` on fields contributed by an extension manifest
+  // (see backend field_contributions). Such fields are re-synced from the
+  // manifest on enable/update, so the admin UI shows their config/help
+  // read-only ("Managed by <ext>") rather than offering edits that won't stick.
+  ext?: string;
   // Set on built-in relation attribute "dimensions" (e.g. usageType,
   // flowDirection): the field definition is locked, but its options can be
   // managed. Custom relation dimensions are fully editable.
@@ -259,6 +296,10 @@ export interface SectionDef {
   groups?: string[];
   translations?: TranslationMap;
   visibility_rules?: VisibilityRuleSet;
+  // Localized labels for subsection (group) headers, keyed by the raw group
+  // name → { locale → label }. Display-only and ungated; any metamodel section
+  // (core or extension) may supply it so group headers aren't English-only.
+  groupTranslations?: Record<string, TranslationMap>;
 }
 
 export interface StakeholderRoleDefinition {
@@ -296,10 +337,24 @@ export interface CardType {
   fields_schema: SectionDef[];
   stakeholder_roles?: StakeholderRoleDefinition[];
   section_config?: Record<string, SectionConfig>;
+  reference_config?: ReferenceConfig;
   built_in: boolean;
   is_hidden: boolean;
   sort_order: number;
   translations?: MetamodelTranslations;
+  /** Seed default color for built-in types (null for custom types) — powers
+   * the admin "reset to default color" affordance (discussion #740). */
+  default_color?: string | null;
+}
+
+/** Per-type human-readable card ID config (discussion #811). When enabled
+ * (`mode: "auto"`) the system generates `{prefix}{number}`; the number is always
+ * auto and the prefix is set by the admin. */
+export interface ReferenceConfig {
+  mode?: "off" | "auto";
+  prefix?: string;
+  start?: number;
+  padding?: number;
 }
 
 export interface RelationType {
@@ -350,6 +405,7 @@ export interface Card {
   approval_status: string;
   data_quality: number;
   external_id?: string;
+  reference?: string | null;
   alias?: string;
   archived_at?: string;
   created_by?: string;
@@ -369,11 +425,50 @@ export interface Calculation {
   formula: string;
   is_active: boolean;
   execution_order: number;
+  /** Treat an empty numeric field as 0 instead of failing. Opt-in per calculation. */
+  blanks_as_zero?: boolean;
+  /** Advisory: things the formula will do that are probably not intended, and
+   *  that raise no error at runtime (e.g. a PLUCK key missing `attributes.`). */
+  warnings?: string[];
   last_error?: string;
   last_run_at?: string;
   created_by?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface CalculationRunCardRef {
+  id: string;
+  name: string;
+}
+
+/** One distinct error message from a manual run, and the cards it was raised on.
+ *  Grouped rather than one row per card: a wrong formula fails the same way on
+ *  every card, so the count is what matters, not a repeated list. */
+export interface CalculationRunFailureGroup {
+  error: string;
+  count: number;
+  cards: CalculationRunCardRef[];
+  /** More cards hit this error than `cards` lists. */
+  cards_truncated: boolean;
+}
+
+export interface CalculationRunCalculation {
+  calculation_id: string;
+  name: string;
+  target_field: string;
+  succeeded: number;
+  failed: number;
+  failures: CalculationRunFailureGroup[];
+}
+
+/** Result of POST /calculations/recalculate/{type_key}. */
+export interface CalculationRunReport {
+  cards_processed: number;
+  calculations_succeeded: number;
+  calculations_failed: number;
+  /** Only calculations that actually ran, in execution order. */
+  calculations: CalculationRunCalculation[];
 }
 
 export interface EAPrinciple {
@@ -437,6 +532,7 @@ export interface RelationRef {
   id: string;
   type: string;
   name: string;
+  subtype?: string;
 }
 
 export interface Relation {
@@ -449,6 +545,40 @@ export interface Relation {
   attributes?: Record<string, unknown>;
   description?: string;
   created_at?: string;
+}
+
+/**
+ * Descendant relation roll-up (discussion #863) — cards related to this
+ * card's descendants rather than to the card itself. Surfaced read-only in a
+ * drawer behind the "+N in sub-items" chip on the Relations section; these
+ * rows are deliberately absent from the inventory grid, matrix report and
+ * exports, where they would double counts.
+ */
+export interface DescendantRelationSummaryEntry {
+  relation_type_key: string;
+  count: number;
+}
+
+export interface DescendantRelationVia {
+  id: string;
+  name: string;
+  type: string;
+}
+
+export interface DescendantRelationRow {
+  id: string;
+  name: string;
+  type: string;
+  subtype?: string | null;
+  lifecycle?: Record<string, string>;
+  via: DescendantRelationVia[];
+}
+
+export interface DescendantRelationsResponse {
+  rows: DescendantRelationRow[];
+  total: number;
+  /** Distinct sub-items across the whole result set, not just this page. */
+  via_total: number;
 }
 
 export interface Comment {
@@ -533,6 +663,7 @@ export interface Bookmark {
   filters?: Record<string, unknown>;
   columns?: string[];
   column_state?: ColumnLayoutItem[];
+  column_filter_model?: Record<string, unknown>;
   sort?: Record<string, unknown>;
   is_default: boolean;
   visibility: "private" | "public" | "shared";
@@ -705,6 +836,9 @@ export interface ArchitectureDecision {
   consequences: string | null;
   alternatives_considered: string | null;
   related_decisions: string[];
+  // Extension attributes bag — keys are namespaced `ext.*` (e.g. `ext.savings`).
+  // Frozen once the ADR is signed; written by ADR panel extensions (SDK 1.3).
+  attributes?: Record<string, unknown>;
   created_by: string | null;
   creator_name?: string | null;
   signatories: SoAWSignatory[];
@@ -729,6 +863,80 @@ export interface FileAttachment {
 }
 
 // ---------------------------------------------------------------------------
+// Repository-wide resources (Admin → Settings → Resources)
+//
+// The union of the two card-owned resource kinds: `file` rows come from
+// `file_attachments`, `link` rows from `documents`. Served by `GET /resources`.
+// ---------------------------------------------------------------------------
+
+export type ResourceKind = "file" | "link";
+
+export interface RepositoryResource {
+  id: string;
+  kind: ResourceKind;
+  card_id: string;
+  card_name: string;
+  card_type: string;
+  card_archived: boolean;
+  name: string;
+  /** File category (files) or link type (links) — both are `resource_types` keys. */
+  category: string | null;
+  /** Files only. */
+  mime_type: string | null;
+  /** Files only, in bytes. */
+  size: number | null;
+  /** Links only. */
+  url: string | null;
+  created_by: string | null;
+  creator_name: string | null;
+  created_at: string | null;
+}
+
+export interface ResourceListPage {
+  items: RepositoryResource[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface ResourceBucket {
+  key: string | null;
+  count: number;
+  bytes: number;
+}
+
+export interface ResourceCardTypeBucket {
+  key: string;
+  file_count: number;
+  link_count: number;
+  bytes: number;
+}
+
+export interface ResourceLargestFile {
+  id: string;
+  name: string;
+  size: number;
+  card_id: string;
+  card_name: string;
+}
+
+export interface ResourceStats {
+  file_count: number;
+  link_count: number;
+  total_bytes: number;
+  card_count: number;
+  by_category: ResourceBucket[];
+  by_link_type: ResourceBucket[];
+  by_card_type: ResourceCardTypeBucket[];
+  largest_files: ResourceLargestFile[];
+}
+
+export interface ResourceBulkDeleteResult {
+  deleted: number;
+  skipped: { id: string; kind: ResourceKind; reason: string }[];
+}
+
+// ---------------------------------------------------------------------------
 // Surveys
 // ---------------------------------------------------------------------------
 
@@ -747,6 +955,12 @@ export interface SurveyField {
   action: "maintain" | "confirm";
   translations?: TranslationMap;
   section_translations?: TranslationMap;
+  // Per-field settings for custom (ext.*) field types + collapsible help text,
+  // enriched from the live metamodel by the response-form endpoint so the survey
+  // form can render the same rating widget / guidance as the card detail.
+  config?: Record<string, unknown>;
+  help?: string;
+  helpTranslations?: TranslationMap;
   // Relation fields: when kind === "relation" the field surveys a relationship
   // rather than an attribute. The respondent's value is a list of SurveyRelationRef.
   kind?: "attribute" | "relation";
@@ -917,6 +1131,8 @@ export interface DiagramGroup {
 // Web Portals
 // ---------------------------------------------------------------------------
 
+export type PortalAccessMode = "public" | "sso";
+
 export interface WebPortal {
   id: string;
   name: string;
@@ -927,9 +1143,27 @@ export interface WebPortal {
   display_fields?: string[];
   card_config?: Record<string, unknown>;
   is_published: boolean;
+  access_mode: PortalAccessMode;
+  allowed_email_domains?: string[] | null;
   created_by?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+// Always-public gate metadata returned by GET /web-portals/public/{slug}/gate.
+// Carries only the access mode + (for SSO) the config needed to start the IdP
+// redirect — never the portal's data.
+export interface PortalGate {
+  access_mode: PortalAccessMode;
+  name: string;
+  sso?: {
+    provider?: string;
+    provider_name?: string;
+    client_id?: string;
+    authorization_endpoint?: string;
+    scopes?: string;
+    extra_auth_params?: Record<string, string>;
+  };
 }
 
 export interface PortalTypeInfo {
@@ -1035,6 +1269,8 @@ export interface ProcessElement {
   data_object_name?: string;
   it_component_id?: string;
   it_component_name?: string;
+  /** M:N — a step can be linked to several Organization cards. */
+  organizations?: { id: string; name: string }[];
   custom_fields?: Record<string, unknown>;
 }
 
@@ -1098,6 +1334,7 @@ export interface ProcessFlowVersion {
     application_id?: string;
     data_object_id?: string;
     it_component_id?: string;
+    organization_ids?: string[];
     custom_fields?: Record<string, unknown>;
   }>;
 }
@@ -1132,6 +1369,7 @@ export interface SnowFieldMapping {
   direction: string;
   transform_type?: string | null;
   transform_config?: Record<string, unknown> | null;
+  default_value?: unknown;
   is_identity: boolean;
 }
 

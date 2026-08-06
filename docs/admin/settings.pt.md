@@ -11,6 +11,9 @@ A página de **Configurações** em **Admin → Configurações** (`/admin/setti
 | **Portais web** | `/admin/settings?tab=web-portals` | Slugs de portais públicos somente leitura, filtros de visibilidade | [Portais web](web-portals.md) |
 | **ServiceNow** | `/admin/settings?tab=servicenow` | Conexão ServiceNow, configuração de sincronização, mapeamento de identidade | [Integração com ServiceNow](servicenow.md) |
 | **TurboLens** | `/admin/settings?tab=turbolens` | Alternâncias específicas de TurboLens, regulamentações habilitadas, polling de análises | Veja a seção [Configurações do TurboLens](#configuracoes-do-turbolens) abaixo |
+| **Migração** | `/admin/settings?tab=migration` | Importações de outras plataformas EA e transferência completa do espaço de trabalho entre instâncias do Turbo EA | [Migração de plataforma](migration.md) |
+| **Registro de auditoria** | `/admin/settings?tab=audit-log` | Registro de alterações — quem mudou o quê e se veio da interface web, da API ou de uma ferramenta de IA | — |
+| **Recursos** | `/admin/settings?tab=resources` | Todos os arquivos e links anexados a um cartão, com estatísticas de armazenamento e limpeza em massa | [Recursos](resources.md) |
 
 O restante desta página cobre a aba **Geral**.
 
@@ -21,6 +24,10 @@ O restante desta página cobre a aba **Geral**.
 ### Logo
 
 Faça upload de um logotipo personalizado que aparece na barra de navegação superior. Formatos suportados: PNG, JPEG, SVG, WebP, GIF. Clique em **Redefinir** para reverter ao logotipo padrão do Turbo EA.
+
+### Estilo da barra de navegação
+
+Escolha as cores de fundo e do texto da barra de navegação superior. O estilo escolhido aplica-se a **todos os usuários** da instância, em desktop e mobile (incluindo o menu lateral móvel). Selecione uma das sete predefinições — Azul-marinho (padrão), Claro, Carvão, Ardósia, Azul, Verde floresta ou Ameixa — ou escolha **Personalizado** para definir livremente as cores de fundo e do texto com os seletores de cores. Uma pré-visualização ao vivo mostra como a barra de navegação ficará antes de salvar, e um aviso aparece quando o contraste entre o texto e o fundo é baixo demais (abaixo de WCAG AA). Clique em **Restaurar padrão** para voltar ao estilo padrão.
 
 ### Favicon
 
@@ -96,10 +103,10 @@ O Turbo EA envia e-mails de convite, notificações de pesquisas, redefinições
 | Campo | Descrição |
 |-------|-----------|
 | **Host SMTP** | O nome de host do seu servidor de e-mail (ex.: `smtp.gmail.com`) |
-| **Porta SMTP** | A porta do servidor (geralmente 587 para TLS) |
+| **Porta SMTP** | A porta do servidor (587 para STARTTLS, 465 para TLS/SSL implícito) |
 | **Usuário SMTP** | O nome de usuário de autenticação |
 | **Senha SMTP** | A senha de autenticação (armazenada criptografada) |
-| **Usar TLS** | Ativar a criptografia STARTTLS (recomendado) |
+| **Usar TLS** | Ativar a criptografia STARTTLS (recomendado). Ignorado na porta 465, que sempre usa TLS/SSL implícito |
 
 ### API do Microsoft Graph (recomendada para o Microsoft 365)
 

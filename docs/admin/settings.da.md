@@ -11,16 +11,23 @@ Siden **Indstillinger** under **Admin → Indstillinger** (`/admin/settings`) er
 | **Webportaler** | `/admin/settings?tab=web-portals` | Offentlige skrivebeskyttede portal-slugs, synlighedsfiltre | [Webportaler](web-portals.md) |
 | **ServiceNow** | `/admin/settings?tab=servicenow` | ServiceNow-forbindelse, synkroniseringskonfiguration, identitetskortlægning | [ServiceNow-integration](servicenow.md) |
 | **TurboLens** | `/admin/settings?tab=turbolens` | TurboLens-specifikke kontakter, aktiverede reguleringer, analysepolling | Se afsnittet [TurboLens-indstillinger](#turbolens-indstillinger) nedenfor |
+| **Migrering** | `/admin/settings?tab=migration` | Import fra andre EA-platforme og fuld overførsel af arbejdsområde mellem Turbo EA-instanser | [Platformsmigrering](migration.md) |
+| **Revisionslog** | `/admin/settings?tab=audit-log` | Ændringsregister — hvem der ændrede hvad, og om det kom fra webgrænsefladen, API'et eller et AI-værktøj | — |
+| **Ressourcer** | `/admin/settings?tab=resources` | Alle filer og links, der er vedhæftet et kort, med lagerstatistik og masseoprydning | [Ressourcer](resources.md) |
 
 Resten af denne side dækker fanebladet **Generelt**.
 
-![Generelle indstillinger](../assets/img/en/28_admin_settings_general.png)
+![Generelle indstillinger](../assets/img/da/28_admin_settings_general.png)
 
 ## Udseende
 
 ### Logo
 
 Upload et brugerdefineret logo, der vises i den øverste navigationslinje. Understøttede formater: PNG, JPEG, SVG, WebP, GIF. Klik på **Nulstil** for at vende tilbage til standard-Turbo EA-logoet.
+
+### Navigationslinjens stil
+
+Vælg baggrunds- og tekstfarve for den øverste navigationslinje. Den valgte stil gælder for **alle brugere** af instansen, på både desktop og mobil (inklusive den mobile sidemenu). Vælg en af de syv kuraterede forudindstillinger — Marineblå (standard), Lys, Koksgrå, Skifer, Blå, Skovgrøn eller Blomme — eller vælg **Brugerdefineret** for frit at angive baggrunds- og tekstfarve med farvevælgerne. En live-forhåndsvisning viser, hvordan navigationslinjen vil se ud, før du gemmer, og en advarsel vises, når kontrasten mellem tekst og baggrund er for lav (under WCAG AA). Klik på **Nulstil til standard** for at vende tilbage til standardstilen.
 
 ### Favicon
 
@@ -96,10 +103,10 @@ Turbo EA sender invitations-e-mails, undersøgelsesnotifikationer, nulstillinger
 | Felt | Beskrivelse |
 |------|-------------|
 | **SMTP-vært** | Værtsnavnet på din mailserver (f.eks. `smtp.gmail.com`) |
-| **SMTP-port** | Serverporten (typisk 587 for TLS) |
+| **SMTP-port** | Serverporten (587 for STARTTLS, 465 for implicit TLS/SSL) |
 | **SMTP-bruger** | Brugernavnet til godkendelse |
 | **SMTP-adgangskode** | Adgangskoden til godkendelse (gemmes krypteret) |
-| **Brug TLS** | Aktivér STARTTLS-kryptering (anbefales) |
+| **Brug TLS** | Aktivér STARTTLS-kryptering (anbefales). Ignoreres på port 465, som altid bruger implicit TLS/SSL |
 
 ### Microsoft Graph API (anbefales til Microsoft 365)
 

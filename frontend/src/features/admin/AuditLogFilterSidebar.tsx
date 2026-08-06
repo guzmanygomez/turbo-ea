@@ -9,6 +9,7 @@
  */
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { DateField } from "@/components/DateField";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Checkbox from "@mui/material/Checkbox";
@@ -26,6 +27,7 @@ import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import MaterialSymbol from "@/components/MaterialSymbol";
+import ColumnFreezeToggle from "@/components/grid/ColumnFreezeToggle";
 
 // ──────────────────────────────────────────────────────────────────────────
 // Types
@@ -94,6 +96,9 @@ interface Props {
   onWidthChange: (w: number) => void;
   visibleColumns: Set<string>;
   onVisibleColumnsChange: (next: Set<string>) => void;
+  /** colIds frozen to the leading edge; the pin on each row toggles one. */
+  frozenColumns: Set<string>;
+  onToggleFrozen: (colId: string) => void;
   onResetColumns?: () => void;
 }
 
@@ -147,6 +152,8 @@ export default function AuditLogFilterSidebar({
   onWidthChange,
   visibleColumns,
   onVisibleColumnsChange,
+  frozenColumns,
+  onToggleFrozen,
   onResetColumns,
 }: Props) {
   const { t } = useTranslation("admin");
@@ -470,21 +477,17 @@ export default function AuditLogFilterSidebar({
               />
               <Collapse in={expandedSections.date}>
                 <Box sx={{ display: "flex", flexDirection: "column", gap: 1, my: 0.5 }}>
-                  <TextField
+                  <DateField
                     size="small"
-                    type="date"
                     label={t("auditLog.filters.dateFrom")}
                     value={filters.dateFrom}
-                    onChange={(e) => setField("dateFrom", e.target.value)}
-                    InputLabelProps={{ shrink: true }}
+                    onChange={(v) => setField("dateFrom", v)}
                   />
-                  <TextField
+                  <DateField
                     size="small"
-                    type="date"
                     label={t("auditLog.filters.dateTo")}
                     value={filters.dateTo}
-                    onChange={(e) => setField("dateTo", e.target.value)}
-                    InputLabelProps={{ shrink: true }}
+                    onChange={(v) => setField("dateTo", v)}
                   />
                 </Box>
               </Collapse>
@@ -518,12 +521,15 @@ export default function AuditLogFilterSidebar({
                 {AUDIT_GRID_COLUMNS.map((c) => {
                   const locked = LOCKED_AUDIT_COLUMNS.has(c.id);
                   return (
+                    // The pin is a sibling of the row button, not a child:
+                    // a locked row disables its button, and a locked column
+                    // is exactly the one worth freezing.
+                    <Box key={c.id} sx={{ display: "flex", alignItems: "center" }}>
                     <ListItemButton
-                      key={c.id}
                       dense
                       disabled={locked}
                       onClick={() => toggleColumn(c.id)}
-                      sx={{ py: 0.25, px: 1, borderRadius: 1 }}
+                      sx={{ py: 0.25, px: 1, borderRadius: 1, flex: 1, minWidth: 0 }}
                     >
                       <ListItemIcon sx={{ minWidth: 28 }}>
                         <Checkbox
@@ -543,6 +549,11 @@ export default function AuditLogFilterSidebar({
                         }}
                       />
                     </ListItemButton>
+                    <ColumnFreezeToggle
+                      frozen={frozenColumns.has(c.id)}
+                      onToggle={() => onToggleFrozen(c.id)}
+                    />
+                    </Box>
                   );
                 })}
               </List>

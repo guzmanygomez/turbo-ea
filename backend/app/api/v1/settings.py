@@ -108,6 +108,16 @@ class DateFormatPayload(BaseModel):
     date_format: str = DEFAULT_DATE_FORMAT
 
 
+HEX_COLOR_PATTERN = r"^#[0-9a-fA-F]{6}$"
+DEFAULT_NAVBAR_BG = "#1a1a2e"
+DEFAULT_NAVBAR_FG = "#ffffff"
+
+
+class NavbarStylePayload(BaseModel):
+    navbar_bg: str = Field(default=DEFAULT_NAVBAR_BG, pattern=HEX_COLOR_PATTERN)
+    navbar_fg: str = Field(default=DEFAULT_NAVBAR_FG, pattern=HEX_COLOR_PATTERN)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -217,6 +227,8 @@ async def get_bootstrap(db: AsyncSession = Depends(get_db)):
         "currency": general.get("currency", DEFAULT_CURRENCY),
         "date_format": general.get("dateFormat", DEFAULT_DATE_FORMAT),
         "app_title": (general.get("app_title") or "").strip() or DEFAULT_APP_TITLE,
+        "navbar_bg": general.get("navbarBg", DEFAULT_NAVBAR_BG),
+        "navbar_fg": general.get("navbarFg", DEFAULT_NAVBAR_FG),
         "bpm_enabled": general.get("bpmEnabled", True),
         "ppm_enabled": general.get("ppmEnabled", False),
         "turbolens_enabled": general.get("turboLensEnabled", True),
@@ -466,6 +478,46 @@ async def update_app_title(
     app_config.APP_TITLE = trimmed or DEFAULT_APP_TITLE
 
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Navbar style (background + text color)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/navbar-style")
+async def get_navbar_style(db: AsyncSession = Depends(get_db)):
+    """Public endpoint — returns the configured navbar colors.
+
+    Public because every authenticated user's shell needs the colors at boot
+    and they are not sensitive. Falls back to the built-in navy defaults.
+    """
+    result = await db.execute(select(AppSettings).where(AppSettings.id == "default"))
+    row = result.scalar_one_or_none()
+    general = (row.general_settings if row else None) or {}
+    return {
+        "navbar_bg": general.get("navbarBg", DEFAULT_NAVBAR_BG),
+        "navbar_fg": general.get("navbarFg", DEFAULT_NAVBAR_FG),
+    }
+
+
+@router.patch("/navbar-style")
+async def update_navbar_style(
+    body: NavbarStylePayload,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Admin endpoint — set the navbar background + text color for all users."""
+    await PermissionService.require_permission(db, user, "admin.settings")
+
+    row = await _get_or_create_row(db)
+    general = dict(row.general_settings or {})
+    general["navbarBg"] = body.navbar_bg.lower()
+    general["navbarFg"] = body.navbar_fg.lower()
+    row.general_settings = general
+    await db.commit()
+
+    return {"navbar_bg": general["navbarBg"], "navbar_fg": general["navbarFg"]}
 
 
 # ---------------------------------------------------------------------------
@@ -874,8 +926,16 @@ async def update_archive_retention_days(
 @router.get("/logo")
 async def get_logo(db: AsyncSession = Depends(get_db)):
     """Public endpoint — returns the current logo (custom or default)."""
-    result = await db.execute(select(AppSettings).where(AppSettings.id == "default"))
-    row = result.scalar_one_or_none()
+    # `custom_logo` is deferred on the model; select the two columns directly
+    # rather than loading the ORM row, so this is the only settings read that
+    # transfers the blob.
+    row = (
+        await db.execute(
+            select(AppSettings.custom_logo, AppSettings.custom_logo_mime).where(
+                AppSettings.id == "default"
+            )
+        )
+    ).one_or_none()
 
     if row and row.custom_logo:
         return Response(
@@ -900,8 +960,14 @@ async def get_favicon(db: AsyncSession = Depends(get_db)):
 
     Priority: custom favicon → default favicon.
     """
-    result = await db.execute(select(AppSettings).where(AppSettings.id == "default"))
-    row = result.scalar_one_or_none()
+    # Column-level select — see get_logo above.
+    row = (
+        await db.execute(
+            select(AppSettings.custom_favicon, AppSettings.custom_favicon_mime).where(
+                AppSettings.id == "default"
+            )
+        )
+    ).one_or_none()
 
     if row and row.custom_favicon:
         return Response(
@@ -926,10 +992,18 @@ async def get_logo_info(
 ):
     """Admin endpoint — returns metadata about the current logo."""
     await PermissionService.require_permission(db, user, "admin.settings")
-    result = await db.execute(select(AppSettings).where(AppSettings.id == "default"))
-    row = result.scalar_one_or_none()
+    # Ask Postgres whether the blob is there instead of fetching it to call
+    # bool() on it — this endpoint only ever needed the answer, not the bytes.
+    row = (
+        await db.execute(
+            select(
+                AppSettings.custom_logo.is_not(None).label("has_custom"),
+                AppSettings.custom_logo_mime,
+            ).where(AppSettings.id == "default")
+        )
+    ).one_or_none()
 
-    has_custom = bool(row and row.custom_logo)
+    has_custom = bool(row and row.has_custom)
     return {
         "has_custom_logo": has_custom,
         "mime_type": (row.custom_logo_mime if has_custom else "image/png"),
@@ -992,10 +1066,17 @@ async def get_favicon_info(
 ):
     """Admin endpoint — returns metadata about the current favicon."""
     await PermissionService.require_permission(db, user, "admin.settings")
-    result = await db.execute(select(AppSettings).where(AppSettings.id == "default"))
-    row = result.scalar_one_or_none()
+    # Presence check in SQL — see get_logo_info above.
+    row = (
+        await db.execute(
+            select(
+                AppSettings.custom_favicon.is_not(None).label("has_custom"),
+                AppSettings.custom_favicon_mime,
+            ).where(AppSettings.id == "default")
+        )
+    ).one_or_none()
 
-    has_custom = bool(row and row.custom_favicon)
+    has_custom = bool(row and row.has_custom)
     return {
         "has_custom_favicon": has_custom,
         "mime_type": (row.custom_favicon_mime if has_custom else "image/png"),

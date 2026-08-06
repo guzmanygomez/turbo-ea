@@ -19,6 +19,7 @@ import Tooltip from "@mui/material/Tooltip";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Switch from "@mui/material/Switch";
 import MaterialSymbol from "@/components/MaterialSymbol";
+import ColumnFreezeToggle from "@/components/grid/ColumnFreezeToggle";
 import type { AppRole } from "@/types";
 
 export type UserStatusFilter = "active" | "invited" | "inactive";
@@ -39,17 +40,37 @@ export const EMPTY_USER_FILTERS: UserFilters = {
   invited: false,
 };
 
+/**
+ * `key` drives visibility (what the prefs store); `colId` is the grid's own
+ * id for the same column and drives freezing. They differ for three columns,
+ * so never use one where the other is meant.
+ */
 export const USER_COLUMNS = [
-  { key: "name", icon: "person", tKey: "users.columns.name" as const },
-  { key: "email", icon: "mail", tKey: "users.columns.email" as const },
-  { key: "role", icon: "shield", tKey: "users.columns.role" as const },
-  { key: "auth", icon: "vpn_key", tKey: "users.columns.auth" as const },
-  { key: "status", icon: "check_circle", tKey: "users.columns.status" as const },
-  { key: "last_login", icon: "schedule", tKey: "users.columns.lastLogin" as const },
-  { key: "created_at", icon: "event", tKey: "users.columns.createdAt" as const },
-  { key: "locale", icon: "language", tKey: "users.columns.locale" as const },
-  { key: "pending_setup", icon: "hourglass_top", tKey: "users.columns.pendingSetup" as const },
-  { key: "groups", icon: "group", tKey: "users.columns.groups" as const },
+  { key: "name", colId: "display_name", icon: "person", tKey: "users.columns.name" as const },
+  { key: "email", colId: "email", icon: "mail", tKey: "users.columns.email" as const },
+  { key: "role", colId: "role", icon: "shield", tKey: "users.columns.role" as const },
+  { key: "auth", colId: "auth_provider", icon: "vpn_key", tKey: "users.columns.auth" as const },
+  { key: "status", colId: "is_active", icon: "check_circle", tKey: "users.columns.status" as const },
+  {
+    key: "last_login",
+    colId: "last_login",
+    icon: "schedule",
+    tKey: "users.columns.lastLogin" as const,
+  },
+  {
+    key: "created_at",
+    colId: "created_at",
+    icon: "event",
+    tKey: "users.columns.createdAt" as const,
+  },
+  { key: "locale", colId: "locale", icon: "language", tKey: "users.columns.locale" as const },
+  {
+    key: "pending_setup",
+    colId: "pending_setup",
+    icon: "hourglass_top",
+    tKey: "users.columns.pendingSetup" as const,
+  },
+  { key: "groups", colId: "group_ids", icon: "group", tKey: "users.columns.groups" as const },
 ];
 
 export const USER_COLUMN_KEYS = USER_COLUMNS.map((c) => c.key);
@@ -89,6 +110,9 @@ interface Props {
   onWidthChange: (w: number) => void;
   selectedColumns: Set<string>;
   onSelectedColumnsChange: (cols: Set<string>) => void;
+  /** Grid colIds frozen to the leading edge; the pin on each row toggles one. */
+  frozenColumns: Set<string>;
+  onToggleFrozen: (colId: string) => void;
   onResetColumns?: () => void;
 }
 
@@ -102,6 +126,8 @@ export default function UsersFilterSidebar({
   onWidthChange,
   selectedColumns,
   onSelectedColumnsChange,
+  frozenColumns,
+  onToggleFrozen,
   onResetColumns,
 }: Props) {
   const { t } = useTranslation(["admin", "common"]);
@@ -502,12 +528,15 @@ export default function UsersFilterSidebar({
                   const locked = LOCKED_USER_COLUMN_KEYS.has(c.key);
                   const checked = selectedColumns.has(c.key) || locked;
                   return (
+                    // The pin is a sibling of the row button, never a child:
+                    // a locked row disables its button (which would swallow
+                    // the click), and a locked column is worth freezing.
+                    <Box key={c.key} sx={{ display: "flex", alignItems: "center" }}>
                     <ListItemButton
-                      key={c.key}
                       dense
                       onClick={() => toggleColumn(c.key)}
                       disabled={locked}
-                      sx={{ py: 0.25, px: 1, borderRadius: 1 }}
+                      sx={{ py: 0.25, px: 1, borderRadius: 1, flex: 1, minWidth: 0 }}
                     >
                       <ListItemIcon sx={{ minWidth: 32 }}>
                         <Checkbox
@@ -528,6 +557,11 @@ export default function UsersFilterSidebar({
                         }}
                       />
                     </ListItemButton>
+                    <ColumnFreezeToggle
+                      frozen={frozenColumns.has(c.colId)}
+                      onToggle={() => onToggleFrozen(c.colId)}
+                    />
+                    </Box>
                   );
                 })}
               </List>

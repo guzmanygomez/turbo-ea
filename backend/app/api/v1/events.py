@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import json
+import uuid
+from datetime import datetime, timezone
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select, union
@@ -8,7 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
 from app.core.security import decode_access_token
-from app.database import get_db
+from app.database import async_session, get_db
 from app.models.card import Card
 from app.models.event import Event
 from app.models.stakeholder import Stakeholder
@@ -20,9 +25,49 @@ from app.services.permission_service import PermissionService
 router = APIRouter(prefix="/events", tags=["events"])
 
 
+def _event_visible_to(is_events_admin: bool, message: dict[str, Any], user_id: str) -> bool:
+    """Decide whether an event-bus message may be sent to a given subscriber.
+
+    The event bus is a single global stream carrying every event, including
+    audit-sensitive ones — card/relation writes, and `ops.*` break-glass events
+    whose payload holds operator emails. The `GET /events` history read is
+    gated by `admin.events`, so the live SSE stream must not be a wider hole:
+
+    - `admin.events` holders get the full stream (they can read the same data
+      via the history endpoint anyway).
+    - Everyone else gets only *user-directed* events — those whose payload
+      carries their own `user_id`. In practice that is `notification.created`
+      (the driver behind the notification bell and badge refresh), which stamps
+      `data.user_id` = recipient. Card / relation / risk / ops events carry no
+      matching `user_id` and are therefore withheld from non-admins.
+    """
+    if is_events_admin:
+        return True
+    data = message.get("data")
+    if not isinstance(data, dict):
+        return False
+    return str(data.get("user_id")) == str(user_id)
+
+
 @router.get("/stream")
 async def event_stream(request: Request, token: str = Query("")):
-    """SSE endpoint. Accepts token via query parameter or httpOnly cookie."""
+    """SSE endpoint. Accepts token via query parameter or httpOnly cookie.
+
+    Events are filtered per subscriber: `admin.events` holders receive the full
+    audit stream, everyone else only their own user-directed events (see
+    `_event_visible_to`).
+    """
+    # A streaming endpoint must never hold a request-scoped session. This route
+    # deliberately does *not* take `Depends(get_db)`: a yield-dependency is only
+    # unwound once the response completes, and an SSE response completes when
+    # the browser tab closes. Holding the session across the stream leaves its
+    # pooled connection checked out — `idle in transaction` — for the tab's
+    # lifetime, so every open tab permanently consumed one of the engine's
+    # connections and a few dozen tabs exhausted the pool (and, on a managed
+    # Postgres with a low connection cap, the database's own limit — see
+    # discussion #901). The auth and permission lookups below therefore run in
+    # an explicit short-lived session, closed before streaming starts;
+    # `generate()` itself touches no database.
     effective_token = token or request.cookies.get("access_token", "")
     if not effective_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -30,11 +75,28 @@ async def event_stream(request: Request, token: str = Query("")):
     if payload is None:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
+    async with async_session() as db:
+        # Resolve the real user so inactive / time-boxed (rescue) accounts are
+        # rejected on the live stream too, mirroring get_current_user.
+        result = await db.execute(select(User).where(User.id == uuid.UUID(payload.get("sub"))))
+        user = result.scalar_one_or_none()
+        if user is None or not user.is_active:
+            raise HTTPException(status_code=401, detail="User not found or inactive")
+        if user.access_expires_at is not None and user.access_expires_at < datetime.now(
+            timezone.utc
+        ):
+            raise HTTPException(status_code=401, detail="Account access has expired")
+
+        is_events_admin = await PermissionService.has_app_permission(db, user, "admin.events")
+        user_id = str(user.id)
+    # Session closed: its connection is back in the pool before the stream opens.
+
     async def generate():
-        async for data in event_bus.subscribe():
+        async for message in event_bus.subscribe():
             if await request.is_disconnected():
                 break
-            yield data
+            if _event_visible_to(is_events_admin, message, user_id):
+                yield f"data: {json.dumps(message, default=str)}\n\n"
 
     return StreamingResponse(
         generate(),

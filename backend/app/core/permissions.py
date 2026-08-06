@@ -54,6 +54,7 @@ APP_PERMISSIONS: dict[str, dict] = {
         "permissions": {
             "diagrams.view": "View free-draw diagrams",
             "diagrams.manage": "Create, edit, and delete diagrams",
+            "diagrams.publish": ("Publish a diagram as a read-only public link for embedding"),
         },
     },
     "bpm": {
@@ -245,6 +246,11 @@ APP_PERMISSIONS: dict[str, dict] = {
                 "metamodel, configuration, settings, users, cards, and relations. "
                 "A dry-run preview is shown before anything is written."
             ),
+            "admin.manage_extensions": (
+                "Manage the Extension Store: upload and install vendor-signed "
+                "extension bundles, apply their content, upload license files, "
+                "and enable/disable or uninstall extensions."
+            ),
         },
     },
     "dashboard": {
@@ -338,6 +344,7 @@ BPM_ADMIN_PERMISSIONS: dict[str, bool] = {
     "documents.manage": True,
     "diagrams.view": True,
     "diagrams.manage": True,
+    "diagrams.publish": False,
     "bpm.view": True,
     "bpm.edit": True,
     "bpm.manage_drafts": True,
@@ -393,6 +400,7 @@ BPM_ADMIN_PERMISSIONS: dict[str, bool] = {
     "admin.impersonate": False,
     "admin.export_workspace": False,
     "admin.import_workspace": False,
+    "admin.manage_extensions": False,
     "dashboard.manage": False,
 }
 
@@ -416,6 +424,7 @@ MEMBER_PERMISSIONS: dict[str, bool] = {
     "documents.manage": True,
     "diagrams.view": True,
     "diagrams.manage": True,
+    "diagrams.publish": False,
     "bpm.view": True,
     "bpm.edit": True,
     "bpm.manage_drafts": True,
@@ -471,6 +480,7 @@ MEMBER_PERMISSIONS: dict[str, bool] = {
     "admin.impersonate": False,
     "admin.export_workspace": False,
     "admin.import_workspace": False,
+    "admin.manage_extensions": False,
     "dashboard.manage": False,
 }
 
@@ -494,6 +504,7 @@ VIEWER_PERMISSIONS: dict[str, bool] = {
     "documents.manage": False,
     "diagrams.view": True,
     "diagrams.manage": False,
+    "diagrams.publish": False,
     "bpm.view": True,
     "bpm.edit": False,
     "bpm.manage_drafts": False,
@@ -549,6 +560,7 @@ VIEWER_PERMISSIONS: dict[str, bool] = {
     "admin.impersonate": False,
     "admin.export_workspace": False,
     "admin.import_workspace": False,
+    "admin.manage_extensions": False,
     "dashboard.manage": False,
 }
 
@@ -668,8 +680,8 @@ IT_PROJECT_MANAGER_CARD_PERMISSIONS: dict[str, bool] = {
 DEFAULT_CARD_PERMISSIONS_BY_ROLE: dict[str, dict[str, bool]] = {
     "responsible": RESPONSIBLE_CARD_PERMISSIONS,
     "observer": OBSERVER_CARD_PERMISSIONS,
-    "process_owner": PROCESS_OWNER_CARD_PERMISSIONS,
-    "technical_application_owner": TECH_APP_OWNER_CARD_PERMISSIONS,
-    "business_application_owner": BIZ_APP_OWNER_CARD_PERMISSIONS,
-    "it_project_manager": IT_PROJECT_MANAGER_CARD_PERMISSIONS,
+    "processOwner": PROCESS_OWNER_CARD_PERMISSIONS,
+    "technicalApplicationOwner": TECH_APP_OWNER_CARD_PERMISSIONS,
+    "businessApplicationOwner": BIZ_APP_OWNER_CARD_PERMISSIONS,
+    "itProjectManager": IT_PROJECT_MANAGER_CARD_PERMISSIONS,
 }

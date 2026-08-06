@@ -96,9 +96,7 @@ async def list_dashboards(
     current_user: User = Depends(require_permission("dashboard.manage")),
 ) -> list[dict[str, Any]]:
     """List all custom dashboards (admin only)."""
-    result = await db.execute(
-        select(CustomDashboard).order_by(CustomDashboard.updated_at.desc())
-    )
+    result = await db.execute(select(CustomDashboard).order_by(CustomDashboard.updated_at.desc()))
     out = []
     for d in result.scalars().all():
         out.append(_serialize(d, await _owner_name(db, d.owner_id)))
@@ -115,9 +113,7 @@ async def list_my_dashboards(
     if not group_ids:
         return []
 
-    result = await db.execute(
-        select(CustomDashboard).where(CustomDashboard.status == "published")
-    )
+    result = await db.execute(select(CustomDashboard).where(CustomDashboard.status == "published"))
     out = []
     for d in result.scalars().all():
         audience = set(d.audience_groups or [])
@@ -141,9 +137,7 @@ async def create_dashboard(
         translations=body.translations,
         status="draft",
         audience_groups=body.audience_groups,
-        default_for_groups=[
-            g for g in body.default_for_groups if g in body.audience_groups
-        ],
+        default_for_groups=[g for g in body.default_for_groups if g in body.audience_groups],
         priority=body.priority,
         owner_id=current_user.id,
         layout=body.layout,
@@ -168,9 +162,7 @@ async def get_dashboard(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Get a dashboard. Admins see any; others only see published ones they're in audience for."""
-    result = await db.execute(
-        select(CustomDashboard).where(CustomDashboard.id == dashboard_id)
-    )
+    result = await db.execute(select(CustomDashboard).where(CustomDashboard.id == dashboard_id))
     dashboard = result.scalar_one_or_none()
     if not dashboard:
         raise HTTPException(status_code=404, detail="Dashboard not found")
@@ -194,9 +186,7 @@ async def update_dashboard(
     current_user: User = Depends(require_permission("dashboard.manage")),
 ) -> dict[str, Any]:
     """Update a custom dashboard."""
-    result = await db.execute(
-        select(CustomDashboard).where(CustomDashboard.id == dashboard_id)
-    )
+    result = await db.execute(select(CustomDashboard).where(CustomDashboard.id == dashboard_id))
     dashboard = result.scalar_one_or_none()
     if not dashboard:
         raise HTTPException(status_code=404, detail="Dashboard not found")
@@ -241,9 +231,7 @@ async def publish_dashboard(
     current_user: User = Depends(require_permission("dashboard.manage")),
 ) -> dict[str, Any]:
     """Set a dashboard to published status."""
-    result = await db.execute(
-        select(CustomDashboard).where(CustomDashboard.id == dashboard_id)
-    )
+    result = await db.execute(select(CustomDashboard).where(CustomDashboard.id == dashboard_id))
     dashboard = result.scalar_one_or_none()
     if not dashboard:
         raise HTTPException(status_code=404, detail="Dashboard not found")
@@ -267,9 +255,7 @@ async def unpublish_dashboard(
     current_user: User = Depends(require_permission("dashboard.manage")),
 ) -> dict[str, Any]:
     """Revert a published dashboard to draft."""
-    result = await db.execute(
-        select(CustomDashboard).where(CustomDashboard.id == dashboard_id)
-    )
+    result = await db.execute(select(CustomDashboard).where(CustomDashboard.id == dashboard_id))
     dashboard = result.scalar_one_or_none()
     if not dashboard:
         raise HTTPException(status_code=404, detail="Dashboard not found")
@@ -293,9 +279,7 @@ async def duplicate_dashboard(
     current_user: User = Depends(require_permission("dashboard.manage")),
 ) -> dict[str, Any]:
     """Duplicate a dashboard as a new draft."""
-    result = await db.execute(
-        select(CustomDashboard).where(CustomDashboard.id == dashboard_id)
-    )
+    result = await db.execute(select(CustomDashboard).where(CustomDashboard.id == dashboard_id))
     source = result.scalar_one_or_none()
     if not source:
         raise HTTPException(status_code=404, detail="Dashboard not found")
@@ -334,9 +318,7 @@ async def delete_dashboard(
     current_user: User = Depends(require_permission("dashboard.manage")),
 ) -> None:
     """Permanently delete a custom dashboard."""
-    result = await db.execute(
-        select(CustomDashboard).where(CustomDashboard.id == dashboard_id)
-    )
+    result = await db.execute(select(CustomDashboard).where(CustomDashboard.id == dashboard_id))
     dashboard = result.scalar_one_or_none()
     if not dashboard:
         raise HTTPException(status_code=404, detail="Dashboard not found")

@@ -102,10 +102,12 @@ plugins:
             Metamodel: Metamodelo
             Calculations: Cálculos
             Tags: Etiquetas
+            Resources: Recursos
             Users & Roles: Usuarios y roles
             Authentication & SSO: Autenticación y SSO
             AI Capabilities: Capacidades de IA
             MCP Integration: Integracion MCP
+            Ops API: API de operaciones
             API Reference: Referencia de la API
             End-of-Life (EOL): Fin de vida (EOL)
             Surveys: Encuestas
@@ -113,6 +115,8 @@ plugins:
             ServiceNow Integration: Integración con ServiceNow
             Platform Migration: Migración de plataforma
             Workspace Transfer: Transferencia de espacio de trabajo
+            Extensions: Extensiones
+            Operations & Upgrades: Operaciones y actualizaciones
             Supply Chain: Cadena de suministro
             Reference: Referencia
             Glossary: Glosario
@@ -163,10 +167,12 @@ plugins:
             Metamodel: Metamodell
             Calculations: Berechnungen
             Tags: Tags
+            Resources: Ressourcen
             Users & Roles: Benutzer und Rollen
             Authentication & SSO: Authentifizierung und SSO
             AI Capabilities: KI-Funktionen
             MCP Integration: MCP-Integration
+            Ops API: Ops-API
             API Reference: API-Referenz
             End-of-Life (EOL): End-of-Life (EOL)
             Surveys: Umfragen
@@ -174,6 +180,8 @@ plugins:
             ServiceNow Integration: ServiceNow-Integration
             Platform Migration: Plattform-Migration
             Workspace Transfer: Workspace-Transfer
+            Extensions: Erweiterungen
+            Operations & Upgrades: Betrieb & Upgrades
             Supply Chain: Lieferkette
             Reference: Referenz
             Glossary: Glossar
@@ -224,10 +232,12 @@ plugins:
             Metamodel: Métamodèle
             Calculations: Calculs
             Tags: Tags
+            Resources: Ressources
             Users & Roles: Utilisateurs et rôles
             Authentication & SSO: Authentification et SSO
             AI Capabilities: Fonctionnalités IA
             MCP Integration: Integration MCP
+            Ops API: API d'operations
             API Reference: Référence API
             End-of-Life (EOL): Fin de vie (EOL)
             Surveys: Enquêtes
@@ -235,6 +245,8 @@ plugins:
             ServiceNow Integration: Intégration ServiceNow
             Platform Migration: Migration de plateforme
             Workspace Transfer: Transfert d'espace de travail
+            Extensions: Extensions
+            Operations & Upgrades: Exploitation et mises à niveau
             Supply Chain: Chaîne d'approvisionnement
             Reference: Référence
             Glossary: Glossaire
@@ -285,10 +297,12 @@ plugins:
             Metamodel: Metamodello
             Calculations: Calcoli
             Tags: Tag
+            Resources: Risorse
             Users & Roles: Utenti e ruoli
             Authentication & SSO: Autenticazione e SSO
             AI Capabilities: Funzionalità IA
             MCP Integration: Integrazione MCP
+            Ops API: API operativa
             API Reference: Riferimento API
             End-of-Life (EOL): Fine vita (EOL)
             Surveys: Sondaggi
@@ -296,6 +310,8 @@ plugins:
             ServiceNow Integration: Integrazione ServiceNow
             Platform Migration: Migrazione di piattaforma
             Workspace Transfer: Trasferimento workspace
+            Extensions: Estensioni
+            Operations & Upgrades: Operazioni e aggiornamenti
             Supply Chain: Catena di approvvigionamento
             Reference: Riferimenti
             Glossary: Glossario
@@ -346,10 +362,12 @@ plugins:
             Metamodel: Metamodelo
             Calculations: Cálculos
             Tags: Tags
+            Resources: Recursos
             Users & Roles: Usuários e papéis
             Authentication & SSO: Autenticação e SSO
             AI Capabilities: Funcionalidades de IA
             MCP Integration: Integracao MCP
+            Ops API: API de operacoes
             API Reference: Referência da API
             End-of-Life (EOL): Fim de vida (EOL)
             Surveys: Pesquisas
@@ -357,6 +375,8 @@ plugins:
             ServiceNow Integration: Integração com ServiceNow
             Platform Migration: Migração de plataforma
             Workspace Transfer: Transferência de workspace
+            Extensions: Extensões
+            Operations & Upgrades: Operações e atualizações
             Supply Chain: Cadeia de suprimentos
             Reference: Referência
             Glossary: Glossário
@@ -407,10 +427,12 @@ plugins:
             Metamodel: 元模型
             Calculations: 计算
             Tags: 标签
+            Resources: 资源
             Users & Roles: 用户与角色
             Authentication & SSO: 认证与 SSO
             AI Capabilities: AI 功能
             MCP Integration: MCP 集成
+            Ops API: 运维 API
             API Reference: API 参考
             End-of-Life (EOL): 生命周期结束 (EOL)
             Surveys: 调查
@@ -418,6 +440,8 @@ plugins:
             ServiceNow Integration: ServiceNow 集成
             Platform Migration: 平台迁移
             Workspace Transfer: 工作区迁移
+            Extensions: 扩展
+            Operations & Upgrades: 运维与升级
             Supply Chain: 供应链
             Reference: 参考
             Glossary: 术语表
@@ -468,10 +492,12 @@ plugins:
             Metamodel: Метамодель
             Calculations: Вычисления
             Tags: Теги
+            Resources: Ресурсы
             Users & Roles: Пользователи и роли
             Authentication & SSO: Аутентификация и SSO
             AI Capabilities: Возможности ИИ
             MCP Integration: Интеграция MCP
+            Ops API: Операционный API
             API Reference: Справочник API
             End-of-Life (EOL): Окончание жизненного цикла (EOL)
             Surveys: Опросы
@@ -479,6 +505,8 @@ plugins:
             ServiceNow Integration: Интеграция с ServiceNow
             Platform Migration: Миграция платформы
             Workspace Transfer: Перенос рабочей области
+            Extensions: Расширения
+            Operations & Upgrades: Эксплуатация и обновления
             Supply Chain: Цепочка поставок
             Reference: Справочник
             Glossary: Глоссарий
@@ -529,10 +557,12 @@ plugins:
             Metamodel: Metamodel
             Calculations: Beregninger
             Tags: Tags
+            Resources: Ressourcer
             Users & Roles: Brugere og roller
             Authentication & SSO: Autentificering og SSO
             AI Capabilities: AI-funktioner
             MCP Integration: MCP-integration
+            Ops API: Drifts-API
             API Reference: API-reference
             End-of-Life (EOL): Udløb (EOL)
             Surveys: Undersøgelser
@@ -540,6 +570,8 @@ plugins:
             ServiceNow Integration: ServiceNow-integration
             Platform Migration: Platformsmigrering
             Workspace Transfer: Workspace-overførsel
+            Extensions: Udvidelser
+            Operations & Upgrades: Drift og opgraderinger
             Supply Chain: Forsyningskæde
             Reference: Reference
             Glossary: Ordliste
@@ -590,10 +622,12 @@ plugins:
             Metamodel: النموذج الفوقي
             Calculations: الحسابات
             Tags: الوسوم
+            Resources: الموارد
             Users & Roles: المستخدمون والأدوار
             Authentication & SSO: المصادقة والدخول الموحّد
             AI Capabilities: قدرات الذكاء الاصطناعي
             MCP Integration: تكامل MCP
+            Ops API: واجهة العمليات
             API Reference: مرجع API
             End-of-Life (EOL): نهاية العمر (EOL)
             Surveys: الاستبيانات
@@ -601,6 +635,8 @@ plugins:
             ServiceNow Integration: تكامل ServiceNow
             Platform Migration: ترحيل المنصة
             Workspace Transfer: نقل مساحة العمل
+            Extensions: الإضافات
+            Operations & Upgrades: العمليات والترقيات
             Supply Chain: سلسلة التوريد
             Reference: المرجع
             Glossary: المسرد
@@ -680,10 +716,12 @@ nav:
       - Metamodel: admin/metamodel.md
       - Calculations: admin/calculations.md
       - Tags: admin/tags.md
+      - Resources: admin/resources.md
       - Users & Roles: admin/users.md
       - Authentication & SSO: admin/sso.md
       - AI Capabilities: admin/ai.md
       - MCP Integration: admin/mcp.md
+      - Ops API: admin/ops-api.md
       - API Reference: admin/api.md
       - End-of-Life (EOL): admin/eol.md
       - Surveys: admin/surveys.md
@@ -691,6 +729,8 @@ nav:
       - ServiceNow Integration: admin/servicenow.md
       - Platform Migration: admin/migration.md
       - Workspace Transfer: admin/workspace-transfer.md
+      - Extensions: admin/extensions.md
+      - Operations & Upgrades: admin/operations.md
       - Supply Chain: admin/supply-chain.md
   - Reference:
       - Glossary: reference/glossary.md

@@ -432,6 +432,8 @@ class TestBootstrapSettings:
         assert data["currency"] == "USD"
         assert data["date_format"] == "DD MMM YYYY"
         assert data["app_title"] == "Turbo EA"
+        assert data["navbar_bg"] == "#1a1a2e"
+        assert data["navbar_fg"] == "#ffffff"
         assert data["bpm_enabled"] is True
         assert data["ppm_enabled"] is False
         assert data["turbolens_enabled"] is True
@@ -476,6 +478,72 @@ class TestBootstrapSettings:
         """Used during boot, before the user has a token — must not require auth."""
         resp = await client.get("/api/v1/settings/bootstrap")
         assert resp.status_code == 200
+
+
+# -------------------------------------------------------------------
+# GET /settings/navbar-style + PATCH /settings/navbar-style
+# -------------------------------------------------------------------
+
+
+class TestNavbarStyleSettings:
+    async def test_get_default_navbar_style(self, client, db, settings_env):
+        """Navbar style endpoint is public (no auth required)."""
+        resp = await client.get("/api/v1/settings/navbar-style")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["navbar_bg"] == "#1a1a2e"
+        assert data["navbar_fg"] == "#ffffff"
+
+    async def test_admin_can_set_navbar_style(self, client, db, settings_env):
+        admin = settings_env["admin"]
+        resp = await client.patch(
+            "/api/v1/settings/navbar-style",
+            json={"navbar_bg": "#1B5E20", "navbar_fg": "#FFFFFF"},
+            headers=auth_headers(admin),
+        )
+        assert resp.status_code == 200
+        # Response echoes the saved (lowercased) values
+        data = resp.json()
+        assert data["navbar_bg"] == "#1b5e20"
+        assert data["navbar_fg"] == "#ffffff"
+
+        # Persisted and visible via GET + bootstrap
+        get_resp = await client.get("/api/v1/settings/navbar-style")
+        assert get_resp.json()["navbar_bg"] == "#1b5e20"
+        boot_resp = await client.get("/api/v1/settings/bootstrap")
+        assert boot_resp.json()["navbar_bg"] == "#1b5e20"
+        assert boot_resp.json()["navbar_fg"] == "#ffffff"
+
+    @pytest.mark.parametrize(
+        "bad_value",
+        ["red", "#12345", "#1234567", "#12345g", "", "1a1a2e"],
+    )
+    async def test_invalid_hex_rejected(self, client, db, settings_env, bad_value):
+        admin = settings_env["admin"]
+        resp = await client.patch(
+            "/api/v1/settings/navbar-style",
+            json={"navbar_bg": bad_value, "navbar_fg": "#ffffff"},
+            headers=auth_headers(admin),
+        )
+        assert resp.status_code == 422
+
+    async def test_member_cannot_set_navbar_style(self, client, db, settings_env):
+        member = settings_env["member"]
+        resp = await client.patch(
+            "/api/v1/settings/navbar-style",
+            json={"navbar_bg": "#212121", "navbar_fg": "#ffffff"},
+            headers=auth_headers(member),
+        )
+        assert resp.status_code == 403
+
+    async def test_viewer_cannot_set_navbar_style(self, client, db, settings_env):
+        viewer = settings_env["viewer"]
+        resp = await client.patch(
+            "/api/v1/settings/navbar-style",
+            json={"navbar_bg": "#212121", "navbar_fg": "#ffffff"},
+            headers=auth_headers(viewer),
+        )
+        assert resp.status_code == 403
 
 
 # -------------------------------------------------------------------
@@ -712,3 +780,66 @@ class TestAISettingsAzure:
             headers=auth_headers(member),
         )
         assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------
+# Branding blobs must not ride along on every settings read
+# ---------------------------------------------------------------
+
+
+class TestBrandingBlobsAreDeferred:
+    """`custom_logo` / `custom_favicon` are up to 5 MB each and sit on the same
+    singleton row as every scalar setting.
+
+    With ~40 `select(AppSettings)` call sites — one per settings endpoint —
+    loading them eagerly meant reading a currency code pulled both binaries out
+    of Postgres, and the Admin → Settings General tab did that 15 times over.
+    They are deferred; only the serving endpoints and the workspace exporter
+    ask for the bytes.
+    """
+
+    def test_columns_are_deferred_on_the_mapper(self):
+        from sqlalchemy import inspect as sa_inspect
+
+        from app.models.app_settings import AppSettings
+
+        mapper = sa_inspect(AppSettings)
+        assert mapper.attrs["custom_logo"].deferred is True
+        assert mapper.attrs["custom_favicon"].deferred is True
+        # The mime columns stay eager — they are tiny and read on every boot.
+        assert mapper.attrs["custom_logo_mime"].deferred is False
+        assert mapper.attrs["custom_favicon_mime"].deferred is False
+
+    def test_info_endpoints_do_not_materialise_the_blob(self):
+        """They need a yes/no, so the presence check belongs in SQL."""
+        import inspect as py_inspect
+
+        from app.api.v1 import settings as settings_module
+
+        for func in (settings_module.get_logo_info, settings_module.get_favicon_info):
+            src = py_inspect.getsource(func)
+            assert "is_not(None)" in src, f"{func.__name__} should test presence in SQL"
+            assert "select(AppSettings)" not in src, (
+                f"{func.__name__} must not load the ORM row — that fetches the blob "
+                "only to call bool() on it."
+            )
+
+    def test_serving_endpoints_select_columns_directly(self):
+        import inspect as py_inspect
+
+        from app.api.v1 import settings as settings_module
+
+        logo_src = py_inspect.getsource(settings_module.get_logo)
+        favicon_src = py_inspect.getsource(settings_module.get_favicon)
+        assert "select(AppSettings.custom_logo" in logo_src
+        assert "select(AppSettings.custom_favicon" in favicon_src
+
+    def test_workspace_exporter_undefers_them(self):
+        """The bundle ships the branding as assets, so it does want the bytes."""
+        import inspect as py_inspect
+
+        from app.services.workspace_io import exporter
+
+        src = py_inspect.getsource(exporter.build_bundle)
+        assert "undefer(AppSettings.custom_logo)" in src
+        assert "undefer(AppSettings.custom_favicon)" in src

@@ -35,6 +35,24 @@ export const surface = {
   dark: { default: "#121212", paper: "#1e1e1e" },
 } as const;
 
+// ── Navbar (admin-configurable — these are the built-in defaults/presets) ──
+
+export const NAVBAR_DEFAULTS = { bg: "#1a1a2e", fg: "#ffffff" } as const;
+
+/** Curated navbar background/text combinations offered in Admin → Settings.
+ *  Every pair meets WCAG AA contrast (≥ 4.5:1) for normal text. */
+export const NAVBAR_PRESETS = [
+  { key: "navy", bg: "#1a1a2e", fg: "#ffffff" },
+  { key: "light", bg: "#ffffff", fg: "#1a1a2e" },
+  { key: "charcoal", bg: "#212121", fg: "#ffffff" },
+  { key: "slate", bg: "#1e293b", fg: "#ffffff" },
+  { key: "blue", bg: brand.primary, fg: "#ffffff" },
+  { key: "forest", bg: "#1b5e20", fg: "#ffffff" },
+  { key: "plum", bg: "#4a148c", fg: "#ffffff" },
+] as const;
+
+export type NavbarPresetKey = (typeof NAVBAR_PRESETS)[number]["key"];
+
 // ── Status (matches MUI default success/warning/error/info hues) ─────────
 
 export const STATUS_COLORS = {
@@ -183,6 +201,30 @@ export const TIMELINE_COLORS = {
   future: "#7c4dff",
   reset: "#ef6c00",
 } as const;
+
+// ── Categorical series ──────────────────────────────────────────────────
+
+/**
+ * Qualitative palette for values that have no colour of their own — an
+ * admin-defined select option left uncoloured, a boolean flag, a series the
+ * metamodel says nothing about. Assign by a stable hash of the value's key so
+ * the same value keeps the same colour across renders, reports and sessions.
+ *
+ * Hues are spread far enough apart to stay distinguishable next to each other
+ * and legible on both the light and dark paper surfaces.
+ */
+export const CATEGORICAL_COLORS = [
+  "#1976d2",
+  "#7b1fa2",
+  "#00897b",
+  "#ef6c00",
+  "#c2185b",
+  "#3949ab",
+  "#00838f",
+  "#5d4037",
+  "#558b2f",
+  "#d32f2f",
+] as const;
 
 // ── Non-color tokens ────────────────────────────────────────────────────
 

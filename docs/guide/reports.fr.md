@@ -35,6 +35,10 @@ Changer de type de carte réinitialise les sélections de regroupement, de color
 
 Lorsque les relations d'une carte portent une valeur de « type » — par exemple le **type d'utilisation** (Propriétaire / Utilisateur / Partie prenante) sur les relations Organisation→Application, ou le **type de support** sur les relations Application→Capacité métier — vous pouvez colorer les cartes selon cette valeur et filtrer dessus. **Groupez le rapport par le type de carte lié** pour les utiliser (par ex. *Grouper par → Organisation* pour débloquer le *type d'utilisation*) : le sous-type apparaît alors sous le groupe **Sous-types de relation** dans la liste *Colorer par* et dans sa propre ligne de filtres. Comme chaque carte est affichée sous une carte liée, elle est colorée selon *cette* relation — une application qui est *Utilisateur* d'une organisation s'affiche comme Utilisateur à cet endroit, même si elle appartient à une autre.
 
+### Groupes imbriqués
+
+Lorsque vous regroupez par un type de carte lié prenant en charge la hiérarchie (par exemple Capacité métier ou Organisation), un interrupteur **Groupes imbriqués** apparaît à côté du sélecteur *Regrouper par*. Activez-le pour afficher les groupes sous forme de boîtes imbriquées suivant la hiérarchie parent/enfant du type lié — comme dans la carte de capacités. Le sélecteur **Profondeur d’affichage** contrôle le nombre de niveaux développés : chaque carte apparaît sous son groupe visible le plus profond, et les groupes situés au-delà de la limite de profondeur remontent leurs cartes vers l’ancêtre visible le plus proche. Les branches sans cartes sont masquées.
+
 ## Carte de capacités
 
 ![Carte de capacités métier](../assets/img/fr/11_carte_capacites.png)
@@ -70,7 +74,7 @@ Le **Rapport Dépendances** visualise les **connexions entre composants** sous f
 
 ### Layered Dependency View (vue de dépendances par couches)
 
-![Layered Dependency View](../assets/img/en/13b_dependencies_c4.png)
+![Layered Dependency View](../assets/img/fr/13b_dependances_c4.png)
 
 Basculez vers la **Layered Dependency View** à l'aide des boutons de mode d'affichage dans la barre d'outils. Il s'agit de la notation maison de Turbo EA pour représenter les dépendances entre fiches selon les quatre couches EA — inspirée du principe de stratification d'ArchiMate et de la philosophie « bons défauts » du modèle C4, mais distincte des deux. La même vue est réutilisée sur la page de détail de fiche (montrant le voisinage de dépendances immédiat de la fiche) et dans l'assistant [TurboLens Architect](turbolens.md#architecture-ai), afin que les dépendances apparaissent de la même manière partout.
 
@@ -152,6 +156,47 @@ Le **Rapport Matrice** crée une **grille de références croisées** entre deux
 - **Cellules** -- Indiquent si une relation existe (et combien)
 
 Ceci est utile pour identifier les lacunes de couverture (capacités sans applications de support) ou les redondances (capacités supportées par trop d'applications).
+
+Utilisez l'option **Masquer les cartes sans relation** pour masquer les lignes et colonnes des fiches qui n'ont aucune relation, en ne conservant que les fiches participant à au moins une relation. La vue complète affichant toutes les fiches reste le comportement par défaut.
+
+### Ce qu'affiche chaque cellule
+
+Le contrôle **Affichage des cellules** propose quatre options :
+
+- **Existe (point)** — un point partout où une relation existe.
+- **Nombre (carte de chaleur)** — combien de relations, nuancé selon la densité.
+- **Valeurs (codes)** — une lettre colorée par valeur de relation, avec une légende au-dessus de la grille. Idéal pour une grande matrice.
+- **Valeurs (libellés)** — les noms des valeurs en entier. Les colonnes s'élargissent, ce qui convient à une matrice plus petite.
+
+Les lettres et les noms proviennent des attributs déclarés par vos types de relation, dans votre langue. Une relation CRUD se lit `C R U D` ; une relation de propriété affiche ses propres valeurs. Ajoutez une valeur à un type de relation dans le [métamodèle](../admin/metamodel.md) et elle apparaît ici sans autre configuration. Une cellule de groupe replié affiche toujours un nombre, car elle peut couvrir de nombreuses valeurs différentes — développez d'un niveau pour les voir.
+
+Une fiche ayant des enfants dans la hiérarchie peut également porter ses propres relations. Le cas échéant, elle reçoit une ligne (ou une colonne) qui lui est propre, intitulée **(lui-même)**, directement sous son en-tête de groupe : ces relations ont ainsi un endroit où s'afficher au lieu de se perdre entre le parent et ses enfants. Repliez le niveau et elles sont comptées dans la cellule du groupe avec celles de ses enfants.
+
+### Filtrer par relation
+
+La barre de filtres au-dessus de la grille restreint la matrice aux relations qui vous intéressent :
+
+- **Type de relation** — lorsque les deux types de fiches sont reliés dans les deux sens.
+- **Sens** — si la fiche de la ligne est la source ou la cible de la relation.
+- **Valeurs** — un filtre par attribut déclaré par les types de relation, y compris «(vide)» pour les relations dont la valeur n'a jamais été renseignée.
+
+Le filtrage vide les cellules des fiches qui ne correspondent plus ; l'option **Masquer les cartes non correspondantes** ne laisse alors que celles qui correspondent. Quelques exemples :
+
+- Application × Objet de données, filtré sur *Créer* — quelles applications font référence pour chaque objet de données.
+- Application × Interface, filtré par sens — qui publie une interface et qui la consomme.
+- Organisation × Application, filtré sur *Propriétaire* — la carte des propriétaires, sans que les utilisateurs l'encombrent.
+
+### Repérer les lacunes de couverture
+
+Deux tuiles comptent les fiches de chaque axe qui n'ont aucune relation. **Afficher seulement les manques** réduit la grille à celles-ci — les capacités que personne ne soutient, les objets de données que personne n'entretient.
+
+### S'orienter dans une grande matrice
+
+**Trouver une ligne** et **Trouver une colonne** filtrent les axes par nom ; un parent reste visible si l'un de ses enfants correspond. Le bouton de permutation dans la barre de titre échange les deux axes.
+
+### Exporter
+
+L'export Excel produit deux feuilles : la grille telle qu'elle apparaît à l'écran, et une ligne par relation avec ses valeurs réparties en colonnes — la feuille sur laquelle construire un tableau croisé. L'export PowerPoint capture l'image.
 
 ## Rapport Qualité des données
 

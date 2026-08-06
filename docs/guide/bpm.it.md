@@ -17,6 +17,8 @@ Il **Navigatore dei processi** organizza i processi in tre categorie principali:
 
 **Filtri:** Tipo, Maturità (Initial / Defined / Managed / Optimized), Livello di automazione, Rischio (Low / Medium / High / Critical), Profondità (L1 / L2 / L3).
 
+Le schede con un diagramma BPMN pubblicato mostrano un'**icona di flusso**: fai clic su di essa per aprire il diagramma a schermo intero senza lasciare il navigatore (o per passare da lì all'editor di flusso completo).
+
 ## Dashboard BPM
 
 ![Dashboard BPM con statistiche](../assets/img/it/15_bpm_dashboard.png)
@@ -41,14 +43,19 @@ Ogni card Business Process può avere un **diagramma del flusso di processo BPMN
 - **Modellazione visiva** — Trascinate elementi BPMN: attività, eventi, gateway, corsie e sotto-processi
 - **Template iniziali** — Scegliete tra 6 template BPMN predefiniti per i pattern di processo comuni (o iniziate da una tela bianca)
 - **Estrazione degli elementi** — Quando salvate un diagramma, il sistema estrae automaticamente tutte le attività, gli eventi, i gateway e le corsie per l'analisi
+- **Colori degli elementi** — Selezionate uno o più elementi e usate il pulsante con il secchiello di vernice nel pannello contestuale per applicare un colore. I colori vengono salvati nel file BPMN stesso, quindi compaiono anche nel visualizzatore di sola lettura, nelle esportazioni e nelle stampe
 
 ### Collegamento degli elementi
 
 Gli elementi BPMN possono essere **collegati alle card EA**. Ad esempio, collegate un'attività nel vostro diagramma di processo all'Application che la supporta. Questo crea una connessione tracciabile tra il vostro modello di processo e il panorama architetturale:
 
 - Selezionate qualsiasi attività, evento o gateway nel diagramma BPMN
-- Il pannello **Element Linker** mostra le card corrispondenti (Application, Data Object, IT Component)
+- Il pannello **Element Linker** mostra le card corrispondenti (Application, Data Object, IT Component, Organization)
 - Collegate l'elemento a una card — la connessione è memorizzata e visibile sia nel flusso di processo che nelle relazioni della card
+
+### Collegare le organizzazioni
+
+La colonna *Organizzazione* della tabella dei passaggi collega i passaggi alle card Organization, accanto ad Application / Data Object / IT Component. A differenza di quei collegamenti a valore singolo, un passaggio può essere collegato a **più** organizzazioni — sceglietele una alla volta e rimuovetele singolarmente. I collegamenti dei passaggi sono puramente informativi — documentano quali organizzazioni sono coinvolte in un passaggio senza creare alcuna relazione tra le card; le relazioni Business Process ↔ Organization si gestiscono separatamente nella scheda Relazioni della card. I nomi delle corsie restano semplice testo libero del diagramma e non sono collegati alle card Organization. La **Matrice Processo × Organizzazione** nei Report BPM aggrega questi collegamenti su tutti i processi.
 
 ### Workflow di approvazione
 
@@ -80,3 +87,4 @@ Tre report specializzati sono disponibili dalla Dashboard BPM:
 - **Report Maturità** — Distribuzione dei processi per livello di maturità, tendenze nel tempo
 - **Report Rischio** — Panoramica della valutazione del rischio, evidenziando i processi che necessitano attenzione
 - **Report Automazione** — Analisi dei livelli di automazione nel panorama dei processi
+- **Matrice Processo × Organizzazione** — Quali organizzazioni eseguono passaggi in quali processi, con filtro per organizzazione e drill-down dei passaggi per processo (in base ai collegamenti informativi dei passaggi; le relazioni tra card non sono incluse)

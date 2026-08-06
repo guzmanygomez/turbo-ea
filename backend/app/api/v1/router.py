@@ -19,6 +19,7 @@ from app.api.v1 import (
     documents,
     eol,
     events,
+    extensions,
     favorites,
     file_attachments,
     file_extraction,
@@ -26,12 +27,14 @@ from app.api.v1 import (
     migration,
     mutation_batches,
     notifications,
+    ops,
     ppm,
     ppm_reports,
     principles_catalogue,
     process_catalogue,
     relations,
     reports,
+    resources,
     risk_mitigation_tasks,
     risks,
     roles,
@@ -87,6 +90,9 @@ api_router.include_router(calculations.router)
 api_router.include_router(servicenow.router)
 api_router.include_router(migration.router)
 api_router.include_router(workspace.router)
+api_router.include_router(extensions.router)
+api_router.include_router(extensions.status_router)
+api_router.include_router(extensions.assets_router)
 api_router.include_router(turbolens.router)
 api_router.include_router(turbolens.cards_router)
 api_router.include_router(turbolens.compliance_router)
@@ -100,9 +106,11 @@ api_router.include_router(risk_mitigation_tasks.risks_router)
 api_router.include_router(risk_mitigation_tasks.tasks_router)
 api_router.include_router(file_attachments.router)
 api_router.include_router(file_extraction.router)
+api_router.include_router(resources.router)
 api_router.include_router(favorites.router)
 api_router.include_router(capability_catalogue.router)
 api_router.include_router(process_catalogue.router)
 api_router.include_router(value_stream_catalogue.router)
 api_router.include_router(principles_catalogue.router)
 api_router.include_router(custom_dashboards.router)
+api_router.include_router(ops.router)

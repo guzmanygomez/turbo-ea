@@ -30,8 +30,32 @@ export interface ImportWarning {
   message: string;
 }
 
+/** Minimal user record used to resolve `stakeholder:<role>` cells. Shape of
+ * `GET /users` (the lite payload every authenticated caller receives). */
+export interface UserRef {
+  id: string;
+  display_name: string;
+  email: string;
+}
+
+/** Stakeholder roles per card type, keyed by type key. Shape of
+ * `GET /stakeholder-roles?type_key=…` per type. */
+export type StakeholderRolesByType = Record<string, { key: string; label: string }[]>;
+
 export interface ParsedRow {
+  /** Per-sheet visible row number (`i + 2`) — used for user-facing display. */
   rowIndex: number;
+  /**
+   * Workbook-wide unique correlation id, assigned by `validateMultiSheet()`
+   * when merging sheets. This is what gets sent as the wire `row_index` and
+   * used as a map/dedup key on both client and server, so it MUST be unique
+   * across the whole workbook (unlike `rowIndex`, which restarts per sheet).
+   * Undefined for the legacy single-sheet path, where `rowIndex` is already
+   * unique and is used directly.
+   */
+  wireRow?: number;
+  /** Originating sheet name — set by `validateMultiSheet()`, for display. */
+  sheet?: string;
   id?: string;
   type: string;
   data: Record<string, unknown>;
@@ -52,6 +76,12 @@ export interface ParsedRow {
   changes?: Record<string, { old: unknown; new: unknown }>;
   /** Resolved tag ids to assign (undefined = `tags` column absent / not supplied) */
   tagIds?: string[];
+  /**
+   * Resolved stakeholder user ids per role key, from `stakeholder:<role>`
+   * columns. A role key present with an empty array means "clear this role";
+   * an absent role key (or `undefined` entirely) means "don't touch".
+   */
+  stakeholders?: Record<string, string[]>;
 }
 
 /**
@@ -64,6 +94,12 @@ export interface ParsedRow {
 export interface RelationOp {
   /** Row number from the originating sheet — 0 indicates the inline cell. */
   rowIndex: number;
+  /**
+   * Workbook-wide unique correlation id assigned by `validateMultiSheet()`,
+   * used as the wire `row_index` so a `/relations/bulk` response can be tied
+   * back to the exact op even when two sheets share a per-sheet row number.
+   */
+  wireRow?: number;
   sheet: string;
   action: "upsert" | "delete";
   /** Relation type key. */
@@ -129,6 +165,10 @@ export interface ImportResult {
   relationsUpserted: number;
   relationsDeleted: number;
   relationsFailed: number;
+  /** Stakeholder assignment sync — populated by `stakeholder:<role>` columns. */
+  stakeholdersAdded: number;
+  stakeholdersRemoved: number;
+  stakeholdersFailed: number;
   failedDetails: { row: number; message: string }[];
 }
 
@@ -210,6 +250,44 @@ function splitRelationCell(cell: string): string[] {
 }
 
 /**
+ * Convert a legacy snake_case stakeholder role key to its camelCase form,
+ * e.g. `technical_application_owner` → `technicalApplicationOwner`.
+ *
+ * Stakeholder role keys were snake_case until the metamodel key grammar was
+ * unified on camelCase. Spreadsheets are long-lived and users keep saved import
+ * templates, so a sheet whose `stakeholder:` headers predate the rename still
+ * has to land. Returns `""` for anything without an underscore, so the caller
+ * can tell "nothing to try" from a real candidate.
+ */
+export function legacyRoleKeyToCamel(roleKey: string): string {
+  if (!roleKey.includes("_")) return "";
+  const [first, ...rest] = roleKey.split("_").filter(Boolean);
+  if (!first) return "";
+  return first + rest.map((w) => w[0].toUpperCase() + w.slice(1)).join("");
+}
+
+/**
+ * Parse one entry of a `stakeholder:<role>` cell. The canonical form is a
+ * plain email address (`ada@corp.com` — see `serializeStakeholderCell` in
+ * `excelExport.ts`, mirroring LeanIX's `subscriptions:` columns). A
+ * `Display Name <email>` entry is tolerated for hand-authored files — the
+ * bracketed email is extracted. Emails are the ONLY accepted user
+ * reference: display names collide, so an entry without an email never
+ * resolves (it surfaces as an "unknown user" warning instead of guessing).
+ */
+export function parseStakeholderEntry(entry: string): { email?: string } {
+  const bracket = entry.match(/<([^<>]+)>\s*$/);
+  if (bracket) {
+    const email = bracket[1].trim();
+    if (email) return { email };
+  }
+  const bare = entry.trim();
+  // A bare token containing `@` and no whitespace is an email address.
+  if (bare.includes("@") && !/\s/.test(bare)) return { email: bare };
+  return {};
+}
+
+/**
  * Backend UUIDs are always lowercased (Python `str(uuid.UUID(...))`), but
  * a hand-typed or stale spreadsheet cell could carry uppercase hex. Use
  * this whenever a UUID string is used as a Map key so the diff doesn't
@@ -278,7 +356,11 @@ function topoSortCreates(rows: ParsedRow[]): ParsedRow[] {
   const visited = new Set<string | number>();
 
   function visit(row: ParsedRow) {
-    const key = row.id ?? `row:${row.rowIndex}`;
+    // Key by the workbook-wide unique `wireRow` when present (multi-sheet):
+    // `rowIndex` restarts per sheet, so keying by it collapses same-numbered
+    // rows from different sheets into one and silently drops cards. Falls
+    // back to `rowIndex` for the legacy single-sheet path where it's unique.
+    const key = row.id ?? `row:${row.wireRow ?? row.rowIndex}`;
     if (visited.has(key)) return;
     visited.add(key);
 
@@ -476,6 +558,8 @@ export function validateImport(
   preSelectedType?: string,
   tagGroups: TagGroup[] = [],
   calculatedFields: CalculatedFieldsMap = {},
+  users: UserRef[] = [],
+  stakeholderRolesByType: StakeholderRolesByType = {},
 ): ImportReport {
   const errors: ImportError[] = [];
   const warnings: ImportWarning[] = [];
@@ -528,7 +612,7 @@ export function validateImport(
   // Warn about unrecognised columns
   const knownCoreCols = new Set([
     "id", "type", "name", "description", "subtype", "parent_id", "parent_path",
-    "external_id", "alias", "approval_status", "tags",
+    "external_id", "reference", "alias", "approval_status", "tags",
     ...LIFECYCLE_PHASES.map((p) => `lifecycle_${p}`),
   ]);
   // Build set of all known attribute columns across all types
@@ -544,8 +628,9 @@ export function validateImport(
     // `rel:<relation_type_key>` columns are the inline relation cells —
     // recognised and parsed by `validateMultiSheet()`'s second pass. The
     // legacy per-sheet validator must not warn about them just because
-    // it doesn't itself process them.
-    if (h.startsWith("rel:")) continue;
+    // it doesn't itself process them. `stakeholder:<role>` columns are
+    // parsed below in this same pass.
+    if (h.startsWith("rel:") || h.startsWith("stakeholder:")) continue;
     if (
       !knownCoreCols.has(h) &&
       !knownCoreCols.has(h.toLowerCase()) &&
@@ -599,6 +684,16 @@ export function validateImport(
   }
 
   const typeKeys = new Set(allTypes.filter((t) => !t.is_hidden).map((t) => t.key));
+
+  // User lookup for `stakeholder:<role>` cells: email (lowercased) → user.
+  // Emails are the only accepted reference — display names collide.
+  const userByEmail = new Map<string, UserRef>();
+  for (const u of users) {
+    if (u.email) userByEmail.set(u.email.trim().toLowerCase(), u);
+  }
+  const stakeholderCols = headers.filter((h) => h.startsWith("stakeholder:"));
+  // Warn once per (type, role) about unknown roles, not once per row.
+  const warnedUnknownRoles = new Set<string>();
 
   // Tag lookup: "group_name|tag_name" (lowercased) → id. Also allow bare "tag_name"
   // when the tag name is unique across groups so exports that didn't carry the
@@ -999,6 +1094,53 @@ export function validateImport(
       }
     }
 
+    // Parse optional `stakeholder:<role>` columns: entries like
+    // "Ada Lovelace <ada@corp.com>; bob@corp.com" resolved to user ids.
+    let parsedStakeholders: Record<string, string[]> | undefined;
+    for (const col of stakeholderCols) {
+      let roleKey = col.slice("stakeholder:".length).trim();
+      if (!roleKey) continue;
+      const rolesForType = stakeholderRolesByType[type];
+      // Role keys moved from snake_case to camelCase, so a sheet exported
+      // before that rename carries `stakeholder:technical_application_owner`.
+      // Fall back to the camelCase form rather than dropping the column, but
+      // only when the literal header does not match a real role.
+      if (rolesForType && !rolesForType.some((r) => r.key === roleKey)) {
+        const camel = legacyRoleKeyToCamel(roleKey);
+        if (camel && rolesForType.some((r) => r.key === camel)) roleKey = camel;
+      }
+      if (rolesForType && !rolesForType.some((r) => r.key === roleKey)) {
+        const warnKey = `${type}|${roleKey}`;
+        if (!warnedUnknownRoles.has(warnKey)) {
+          warnedUnknownRoles.add(warnKey);
+          warnings.push({
+            column: col,
+            message: t("import.warnings.unknownStakeholderRole", { role: roleKey, type }),
+          });
+        }
+        continue;
+      }
+      const cell = str(raw[col]);
+      const ids: string[] = [];
+      if (cell !== "") {
+        for (const entry of splitRelationCell(cell)) {
+          const ref = parseStakeholderEntry(entry);
+          const resolved = ref.email ? userByEmail.get(ref.email.toLowerCase()) : undefined;
+          if (!resolved) {
+            warnings.push({
+              row: rowNum,
+              column: col,
+              message: t("import.warnings.unknownStakeholderUser", { row: rowNum, value: entry }),
+            });
+          } else if (!ids.includes(resolved.id)) {
+            ids.push(resolved.id);
+          }
+        }
+      }
+      // Present column (even when empty) → sync this role. Empty = clear.
+      (parsedStakeholders ??= {})[roleKey] = ids;
+    }
+
     // Build the data payload
     const data: Record<string, unknown> = {
       type,
@@ -1021,12 +1163,13 @@ export function validateImport(
       parentPathKey,
       ownPathKey: pathKey(type, parentSegments ? [...parentSegments, name] : [name]),
       tagIds: parsedTagIds,
+      stakeholders: parsedStakeholders,
     };
 
     if (id && matchedExisting) {
       parsed.id = id;
       parsed.existing = matchedExisting;
-      // Classify as update when either regular fields or tags actually changed
+      // Classify as update when regular fields, tags, or stakeholders changed
       const { patch, changes } = buildPatch(data, matchedExisting);
       const tagsChanged =
         parsedTagIds !== undefined &&
@@ -1034,7 +1177,30 @@ export function validateImport(
           parsedTagIds,
           (matchedExisting.tags || []).map((tg) => tg.id),
         );
-      if (Object.keys(patch).length > 0 || tagsChanged) {
+      // Per-role stakeholder diff. Only roles whose column is present are
+      // compared — an absent column never counts as a change.
+      const stakeholderChanges: Record<string, { old: unknown; new: unknown }> = {};
+      if (parsedStakeholders) {
+        for (const [roleKey, ids] of Object.entries(parsedStakeholders)) {
+          const existingRefs = (matchedExisting.stakeholders || []).filter(
+            (s) => s.role === roleKey,
+          );
+          if (sameTagSet(ids, existingRefs.map((s) => s.user_id))) continue;
+          stakeholderChanges[`stakeholder_${roleKey}`] = {
+            old: existingRefs
+              .map((s) => s.user_display_name || s.user_email || s.user_id)
+              .join(", "),
+            new: ids
+              .map((uid) => {
+                const u = users.find((x) => x.id === uid);
+                return u ? u.display_name || u.email : uid;
+              })
+              .join(", "),
+          };
+        }
+      }
+      const stakeholdersChanged = Object.keys(stakeholderChanges).length > 0;
+      if (Object.keys(patch).length > 0 || tagsChanged || stakeholdersChanged) {
         parsed.changes = changes;
         if (tagsChanged && parsedTagIds) {
           const newTagIds = parsedTagIds;
@@ -1053,6 +1219,9 @@ export function validateImport(
                 .join(", "),
             },
           };
+        }
+        if (stakeholdersChanged) {
+          parsed.changes = { ...(parsed.changes || {}), ...stakeholderChanges };
         }
         updates.push(parsed);
       } else {
@@ -1092,6 +1261,8 @@ export async function validateMultiSheet(
   preSelectedType?: string,
   tagGroups: TagGroup[] = [],
   calculatedFields: CalculatedFieldsMap = {},
+  users: UserRef[] = [],
+  stakeholderRolesByType: StakeholderRolesByType = {},
 ): Promise<ImportReport> {
   const errors: ImportError[] = [];
   const warnings: ImportWarning[] = [];
@@ -1099,6 +1270,11 @@ export async function validateMultiSheet(
   const updates: ParsedRow[] = [];
   let skipped = 0;
   let totalRows = 0;
+  // Monotonic counter used to hand every merged row a workbook-wide unique
+  // `wireRow`. `validateImport()`'s per-sheet `rowIndex` (`i + 2`) restarts at
+  // 2 for each sheet, so it collides across sheets and cannot be used as a
+  // correlation / dedup key once the sheets are flattened into one batch.
+  let wireCounter = 0;
 
   const meta = parsed.meta;
   // Banner-trigger: a format mismatch is non-fatal — surface as a warning.
@@ -1120,6 +1296,8 @@ export async function validateMultiSheet(
       sheet.typeHint ?? preSelectedType,
       tagGroups,
       calculatedFields,
+      users,
+      stakeholderRolesByType,
     );
     errors.push(
       ...sheetReport.errors.map((e) => ({
@@ -1133,6 +1311,17 @@ export async function validateMultiSheet(
         message: `${sheet.sheet}: ${w.message}`,
       })),
     );
+    // Tag each row with its sheet name (for display) and a workbook-wide
+    // unique `wireRow` (for correlation). `rowIndex` stays the per-sheet
+    // visible Excel row number.
+    for (const r of sheetReport.creates) {
+      r.sheet = sheet.sheet;
+      r.wireRow = ++wireCounter;
+    }
+    for (const r of sheetReport.updates) {
+      r.sheet = sheet.sheet;
+      r.wireRow = ++wireCounter;
+    }
     creates.push(...sheetReport.creates);
     updates.push(...sheetReport.updates);
     skipped += sheetReport.skipped;
@@ -1151,6 +1340,37 @@ export async function validateMultiSheet(
   const fileByOwnPathKey = new Map<string, ParsedRow>();
   for (const r of creates) {
     if (r.ownPathKey) fileByOwnPathKey.set(r.ownPathKey, r);
+  }
+
+  // Bare-name index of same-batch creates. The exporter writes a relation
+  // target as just its name when that name is unique for its type — even for
+  // hierarchical cards, whose `ownPathKey` is parent-qualified. So a
+  // bare-name ref to a new child card misses `fileByOwnPathKey`; this index
+  // lets us still recognise it as a same-batch row and express it as a
+  // name+path ref the backend resolves after creating the cards. `null`
+  // marks an ambiguous bare name (2+ creates of the same type share it) —
+  // those fall through to the full-path / backend resolver.
+  const fileByTypeName = new Map<string, ParsedRow | null>();
+  for (const r of creates) {
+    const nm = str(r.data.name).toLowerCase();
+    if (!nm) continue;
+    const k = `${r.type}|${nm}`;
+    fileByTypeName.set(k, fileByTypeName.has(k) ? null : r);
+  }
+
+  /** Match a ref against a card created in this same workbook, by full path
+   * first (exact) then by a unique bare name. Returns the matched row, or
+   * undefined when there's no unambiguous same-batch card. */
+  function sameBatchCreate(type: string, ref: string): ParsedRow | undefined {
+    const segs = decodePath(ref);
+    if (segs.length === 0) return undefined;
+    const full = fileByOwnPathKey.get(pathKey(type, segs));
+    if (full) return full;
+    if (segs.length === 1) {
+      const byName = fileByTypeName.get(`${type}|${segs[0].trim().toLowerCase()}`);
+      if (byName) return byName; // null (ambiguous) → undefined
+    }
+    return undefined;
   }
 
   // ----- Two-pass ref resolution ----------------------------------------
@@ -1179,8 +1399,7 @@ export async function validateMultiSheet(
   function stageRef(type: string, ref: string): void {
     const segs = decodePath(ref);
     if (segs.length === 0) return;
-    const fullKey = pathKey(type, segs);
-    if (fileByOwnPathKey.has(fullKey)) return; // same-batch hit, no server call
+    if (sameBatchCreate(type, ref)) return; // same-batch hit, no server call
     const key = refLookupKey(type, ref);
     if (!refsToResolve.has(key)) {
       refsToResolve.set(key, { type, ref });
@@ -1303,11 +1522,14 @@ export async function validateMultiSheet(
   ): CardRefHandle | undefined {
     const segs = decodePath(ref);
     if (segs.length === 0) return undefined;
-    const fullKey = pathKey(targetTypeKey, segs);
-    // Same-batch row?
-    const fileMatch = fileByOwnPathKey.get(fullKey);
-    if (fileMatch) {
-      return { kind: "pathKey", pathKey: fullKey, type: targetTypeKey };
+    // Same-batch row? Match by full path, then by unique bare name (the
+    // exporter writes bare names for uniquely-named cards, including
+    // hierarchical ones). Express it as the matched row's own path key so
+    // the apply step hands the backend a name+path ref it resolves after
+    // creating the cards.
+    const fileMatch = sameBatchCreate(targetTypeKey, ref);
+    if (fileMatch?.ownPathKey) {
+      return { kind: "pathKey", pathKey: fileMatch.ownPathKey, type: targetTypeKey };
     }
     const lookupKey = refLookupKey(targetTypeKey, ref);
     const r = refResults.get(lookupKey);
@@ -1392,20 +1614,25 @@ export async function validateMultiSheet(
       const parentPathRaw = str(raw["parent_path"]);
       if (!name) continue;
 
-      // Locate the source. The `id` column is authoritative — a valid
-      // UUID is trusted directly, **without** requiring the card to be
-      // in the loaded `existingCards` slice (the grid filter shouldn't
-      // affect which sheet rows the importer can process). If the UUID
-      // is stale, the bulk-apply will surface a per-row error.
+      // Locate the source. A row that this same workbook is *creating*
+      // (`fileByOwnPathKey`, which holds only creates) must source its
+      // relations from the pathKey, so the apply step resolves them to the
+      // NEW server id. Trusting the `id` column here instead would carry a
+      // stale, cross-instance UUID — the card's id from the *source* instance
+      // an export came from — which is absent in a fresh target and fails
+      // the relation insert with a foreign-key violation. The `id` column is
+      // only authoritative for cards that already exist in the target (an
+      // update / same-instance re-import), where it also enables the
+      // relation delete-diff below.
       let sourceRef: CardRefHandle | undefined;
       const ownPath = parentPathRaw
         ? [...decodePath(parentPathRaw), name]
         : [name];
       const ownKey = pathKey(sheetType, ownPath);
-      if (idCell && UUID_RE.test(idCell)) {
-        sourceRef = { kind: "id", id: normalizeId(idCell) };
-      } else if (fileByOwnPathKey.has(ownKey)) {
+      if (fileByOwnPathKey.has(ownKey)) {
         sourceRef = { kind: "pathKey", pathKey: ownKey, type: sheetType };
+      } else if (idCell && UUID_RE.test(idCell)) {
+        sourceRef = { kind: "id", id: normalizeId(idCell) };
       } else {
         // Fallback for rows whose `id` cell is missing / non-UUID — try
         // to resolve against existing cards via the staged name+path ref.
@@ -1643,6 +1870,11 @@ export async function validateMultiSheet(
   relationOps.length = 0;
   relationOps.push(...dedupedOps);
 
+  // Hand every relation op a workbook-wide unique `wireRow` so a
+  // `/relations/bulk` response can be tied back to the exact op for
+  // failure reporting even when two sheets share a per-sheet row number.
+  for (const op of relationOps) op.wireRow = ++wireCounter;
+
   void inlineRefs;
   return {
     errors,
@@ -1813,6 +2045,11 @@ export async function executeImport(
     relationsUpserted,
     relationsDeleted,
     relationsFailed,
+    // Legacy path: `stakeholder:<role>` columns are only applied by
+    // `executeMultiSheetImport` (the live import path).
+    stakeholdersAdded: 0,
+    stakeholdersRemoved: 0,
+    stakeholdersFailed: 0,
     failedDetails,
   };
 }
@@ -1831,8 +2068,11 @@ function refHandleToPayload(
 }
 
 /**
- * Multi-sheet executor. Uses the new backend bulk endpoints so a 500-row
- * workbook doesn't fire 500 HTTP requests.
+ * Multi-sheet executor. Uses the backend bulk endpoints so a 500-row
+ * workbook doesn't fire 500 HTTP requests. Cards are created (and committed)
+ * first, then relations are applied against the now-persisted cards — so a
+ * relation failure can never leave a card half-created, and same-batch
+ * targets resolve via the server-assigned UUIDs captured from bulk-create.
  *
  * Phases:
  *   1. `POST /cards/bulk-create` (chunked) for new cards. Captures the
@@ -1857,7 +2097,24 @@ export async function executeMultiSheetImport(
   let relationsUpserted = 0;
   let relationsDeleted = 0;
   let relationsFailed = 0;
+  let stakeholdersAdded = 0;
+  let stakeholdersRemoved = 0;
+  let stakeholdersFailed = 0;
   const failedDetails: { row: number; message: string }[] = [];
+
+  // Record a failure using the per-sheet visible row number for `row` and
+  // prefixing the sheet name into the message (mirroring how validation
+  // errors are formatted), so the user sees "Provider: ..." rather than a
+  // bare — and now workbook-global — correlation id.
+  const pushFailure = (
+    src: { rowIndex: number; sheet?: string },
+    message: string,
+  ) => {
+    failedDetails.push({
+      row: src.rowIndex,
+      message: src.sheet ? `${src.sheet}: ${message}` : message,
+    });
+  };
 
   // pathKey → server uuid, populated as bulk-create finishes.
   const pathToId = new Map<string, string>();
@@ -1889,7 +2146,7 @@ export async function executeMultiSheetImport(
             ? idMapping.get(row.parentId)
             : undefined);
         return {
-          row_index: row.rowIndex,
+          row_index: row.wireRow ?? row.rowIndex,
           type: row.type,
           name: (d.name as string) ?? "",
           subtype: d.subtype as string | undefined,
@@ -1909,7 +2166,7 @@ export async function executeMultiSheetImport(
         results: { row_index: number; status: "created" | "failed"; id?: string; error?: string }[];
       }>("/cards/bulk-create", body);
       for (const r of resp.results) {
-        const row = chunk.find((c) => c.rowIndex === r.row_index);
+        const row = chunk.find((c) => (c.wireRow ?? c.rowIndex) === r.row_index);
         if (!row) continue;
         if (r.status === "created" && r.id) {
           created++;
@@ -1924,20 +2181,14 @@ export async function executeMultiSheetImport(
           }
         } else {
           failed++;
-          failedDetails.push({
-            row: row.rowIndex,
-            message: r.error ?? t("import.errors.unknown"),
-          });
+          pushFailure(row, r.error ?? t("import.errors.unknown"));
         }
       }
     } catch (e) {
       // Whole-chunk failure — count everything as failed so the user sees the totals.
       for (const row of chunk) {
         failed++;
-        failedDetails.push({
-          row: row.rowIndex,
-          message: e instanceof Error ? e.message : t("import.errors.unknown"),
-        });
+        pushFailure(row, e instanceof Error ? e.message : t("import.errors.unknown"));
       }
     }
     done += chunk.length;
@@ -1971,10 +2222,7 @@ export async function executeMultiSheetImport(
       if (didSomething) updated++;
     } catch (e) {
       failed++;
-      failedDetails.push({
-        row: row.rowIndex,
-        message: e instanceof Error ? e.message : t("import.errors.unknown"),
-      });
+      pushFailure(row, e instanceof Error ? e.message : t("import.errors.unknown"));
     }
     done++;
     onProgress?.(done, total);
@@ -1997,9 +2245,14 @@ export async function executeMultiSheetImport(
 
   for (let i = 0; i < report.relationOps.length; i += CHUNK) {
     const chunk = report.relationOps.slice(i, i + CHUNK);
+    // Correlate the response's echoed `row_index` back to the exact op so a
+    // failure is attributed to the right sheet + visible row, even when two
+    // sheets share a per-sheet row number.
+    const opByWire = new Map<number, RelationOp>();
+    for (const op of chunk) opByWire.set(op.wireRow ?? op.rowIndex, op);
     const body = {
       operations: chunk.map((op) => ({
-        row_index: op.rowIndex,
+        row_index: op.wireRow ?? op.rowIndex,
         action: op.action,
         type: op.relationType,
         source: materialize(op.sourceRef),
@@ -2017,23 +2270,113 @@ export async function executeMultiSheetImport(
         else if (r.status === "deleted") relationsDeleted++;
         else if (r.status === "failed") {
           relationsFailed++;
-          failedDetails.push({
-            row: r.row_index,
-            message: r.error ?? t("import.errors.unknown"),
-          });
+          const op = opByWire.get(r.row_index);
+          pushFailure(op ?? { rowIndex: r.row_index }, r.error ?? t("import.errors.unknown"));
         }
       }
     } catch (e) {
       for (const op of chunk) {
         relationsFailed++;
-        failedDetails.push({
-          row: op.rowIndex,
-          message: e instanceof Error ? e.message : t("import.errors.unknown"),
-        });
+        pushFailure(op, e instanceof Error ? e.message : t("import.errors.unknown"));
       }
     }
     done += chunk.length;
     onProgress?.(done, total);
+  }
+
+  // ----- Stakeholder assignments ----------------------------------------
+  // Applied last, once every card id is known. Creates: every resolved
+  // (role, user) becomes an add. Updates: per-role diff against the existing
+  // card's assignments — a present-but-empty role clears it; roles whose
+  // column was absent are never touched.
+  type StakeholderWireOp = {
+    row_index: number;
+    action: "add" | "remove";
+    card_id: string;
+    user_id: string;
+    role: string;
+  };
+  const stakeholderOps: StakeholderWireOp[] = [];
+  const stakeholderOpSource = new Map<number, ParsedRow>();
+  for (const row of sortedCreates) {
+    if (!row.stakeholders) continue;
+    const serverId = row.ownPathKey ? pathToId.get(row.ownPathKey) : undefined;
+    if (!serverId) continue; // create failed — its failure is already counted
+    const wire = row.wireRow ?? row.rowIndex;
+    stakeholderOpSource.set(wire, row);
+    for (const [role, ids] of Object.entries(row.stakeholders)) {
+      for (const uid of ids) {
+        stakeholderOps.push({
+          row_index: wire,
+          action: "add",
+          card_id: serverId,
+          user_id: uid,
+          role,
+        });
+      }
+    }
+  }
+  for (const row of report.updates) {
+    if (!row.stakeholders || !row.id || !row.existing) continue;
+    const wire = row.wireRow ?? row.rowIndex;
+    stakeholderOpSource.set(wire, row);
+    for (const [role, ids] of Object.entries(row.stakeholders)) {
+      const existingIds = new Set(
+        (row.existing.stakeholders || []).filter((s) => s.role === role).map((s) => s.user_id),
+      );
+      const newIds = new Set(ids);
+      for (const uid of newIds) {
+        if (!existingIds.has(uid)) {
+          stakeholderOps.push({
+            row_index: wire,
+            action: "add",
+            card_id: row.id,
+            user_id: uid,
+            role,
+          });
+        }
+      }
+      for (const uid of existingIds) {
+        if (!newIds.has(uid)) {
+          stakeholderOps.push({
+            row_index: wire,
+            action: "remove",
+            card_id: row.id,
+            user_id: uid,
+            role,
+          });
+        }
+      }
+    }
+  }
+  for (let i = 0; i < stakeholderOps.length; i += CHUNK) {
+    const chunk = stakeholderOps.slice(i, i + CHUNK);
+    try {
+      const resp = await api.post<{
+        results: { row_index: number | null; status: string; error?: string }[];
+      }>("/stakeholders/bulk", { operations: chunk });
+      for (const r of resp.results) {
+        if (r.status === "added") stakeholdersAdded++;
+        else if (r.status === "removed") stakeholdersRemoved++;
+        else if (r.status === "error") {
+          stakeholdersFailed++;
+          const src = r.row_index != null ? stakeholderOpSource.get(r.row_index) : undefined;
+          pushFailure(
+            src ?? { rowIndex: r.row_index ?? 0 },
+            r.error ?? t("import.errors.unknown"),
+          );
+        }
+      }
+    } catch (e) {
+      for (const op of chunk) {
+        stakeholdersFailed++;
+        const src = stakeholderOpSource.get(op.row_index);
+        pushFailure(
+          src ?? { rowIndex: op.row_index },
+          e instanceof Error ? e.message : t("import.errors.unknown"),
+        );
+      }
+    }
   }
 
   return {
@@ -2043,6 +2386,9 @@ export async function executeMultiSheetImport(
     relationsUpserted,
     relationsDeleted,
     relationsFailed,
+    stakeholdersAdded,
+    stakeholdersRemoved,
+    stakeholdersFailed,
     failedDetails,
   };
 }

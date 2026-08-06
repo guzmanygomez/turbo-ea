@@ -34,6 +34,15 @@ Click **+ New Type** to create a custom card type. Configure:
 
 Click any type to open the **Type Detail Drawer**. Here you can configure:
 
+#### Type Color
+
+Every card type — including the built-in ones — has a customizable color used across the inventory, reports, dependency views, and diagrams. This lets you align Turbo EA with your organization's visual conventions (for example TOGAF/ArchiMate palettes: business elements in yellow/orange, applications in blue).
+
+- Pick a color with the color swatch in the drawer. A hint appears when the chosen color has very low contrast against light or dark backgrounds.
+- Built-in types show a **reset** button next to the color swatch whenever the color differs from the Turbo EA default, so you can always return to the standard palette.
+- Text rendered on top of type colors (chips, diagram shapes) automatically switches between black and white for readability, in both light and dark mode.
+- The picker shows a **live preview** beside the palette: the type name, chip, card icon, subtype, card ID pill, and a dependency-view node, rendered once for the light theme and once for the dark theme, updating as you pick.
+
 #### Fields
 
 Fields define the custom attributes available on cards of this type. Each field has:
@@ -60,6 +69,19 @@ Fields are organized into **sections** on the card detail page. You can:
 - Reorder fields within a section by dragging, and move a field to a different section from its **move** action
 
 The special section name `__description` adds fields to the Description section of the card detail page.
+
+#### Card ID
+
+Toggle **Card ID generation** on to give cards of this type a stable, human-readable ID (for example `APP-00001`). The ID shows as a copy-to-clipboard pill next to the card's type on the detail page, as an optional sortable/filterable column in the inventory, in Excel exports, and in calculated-field formulas (via `data.reference`).
+
+The **number is always generated automatically**; you only control the **prefix**. When you turn the toggle on, a suggested prefix (derived from the type name, e.g. `APP-`) is shown as text — click the pencil to change it. Two settings tune the number:
+
+- **Start at** — the first number in the series (default `1`).
+- **Min digits** — zero-padding width (default `5`), so `1` renders as `00001`. It's a minimum; numbers widen once they exceed it. A live **Example** shows the first ID as you type.
+
+IDs are **globally unique, read-only, and never reused or changed** once assigned. The number sequence is tracked **per prefix across the whole workspace**, so two card types that share a prefix form one continuous, collision-free series. **Once any card of the type has an ID, the whole format — prefix, start, and min digits — is locked** (the fields become read-only), so existing IDs can never drift; you can still turn generation off.
+
+**Saving the type never assigns IDs to existing cards** — that bulk action is deliberately separate. New cards get their ID automatically on creation; to fill the existing backlog, use the dedicated **Generate IDs** button in the ID section (it shows how many cards still need one, runs on demand with a progress bar, and confirms when done). It is fill-only and idempotent — it only assigns IDs to cards that don't have one yet, never rewriting an existing ID.
 
 #### Data quality scoring
 
@@ -97,6 +119,15 @@ When no subtype is selected on a card (or the type has no subtypes), all fields 
 
 Define custom roles for this type (e.g., "Application Owner", "Technical Owner"). Each role carries **card-level permissions** that are combined with the user's app-level role when accessing a card. See [Users & Roles](users.md) for more on the permission model.
 
+Each role has a **key** (the identifier stored on cards, used by the `stakeholder:<role_key>` import/export columns) and a **label** (what users see). The key follows the same convention as every other metamodel key — letters and digits only, starting with a letter, 3–50 characters, conventionally camelCase such as `businessArchitect`. It is filled in automatically from the label, so you rarely need to type one.
+
+Roles can be removed in two ways:
+
+- **Archive** — the role stays on cards that already use it but can no longer be assigned, and it stops granting its card-level permissions. Archived roles are listed behind the **Show archived** toggle and can be restored at any time. This is the right choice for a role that has been genuinely used.
+- **Delete** — permanent, and only offered while the role is unused. Turbo EA refuses to delete a role that anyone holds on a card of this type, that a survey targets, or that is the type's last remaining active role; the confirmation dialog says which of these applies and offers to archive it instead. This is the way to clean up a role that was created by mistake.
+
+A role's key can be corrected as long as **nobody holds the role** — surveys that target it follow the rename automatically, and renaming the type's only role is fine since the role survives it. Once someone holds the role, the key is locked and the field explains why. Roles created before this convention keep the key they already have and go on working; only a new or changed key is checked.
+
 #### Translations
 
 Click the **Translate** button in the type drawer toolbar to open the **Translation Dialog**. Here you can provide translations for all metamodel labels in each supported language:
@@ -128,6 +159,10 @@ Relation types define the allowed connections between card types. Each relation 
 | **Cardinality** | n:m (many-to-many) or 1:n (one-to-many) |
 
 Click **+ New Relation Type** to create a relation, or click an existing one to edit its labels and attributes.
+
+The **Label** and **Reverse Label** fields are written in the language you are currently using — the field caption shows which one (for example *Label (English)*). Renaming a relation updates that language everywhere the verb appears: the **Relations** section on a card, the inventory relation columns, reports, portals and diagrams. Other languages keep their own wording until you translate them.
+
+Use **Manage Translations** at the top of the Relation Types tab to translate every relation's verbs into each enabled language in one pass. Pick a language tab, fill in the wording next to the English source, and save — the counter on each tab shows how many verbs that language still needs. English is not listed here because it is the wording on the relation itself; a verb left untranslated falls back to it.
 
 ### Relation attributes
 
@@ -235,7 +270,7 @@ A built-in **Contract** link type ships enabled by default. Both lists are inclu
 
 For each card type, the **Layout** section in the type drawer controls how the card detail page is structured:
 
-- **Section order** — Drag sections (Description, EOL, Lifecycle, Hierarchy, Relations, and custom sections) to reorder them
+- **Section order** — Drag sections (Description, EOL, Lifecycle, Hierarchy, Tags, Relations, and custom sections) to reorder them
 - **Visibility** — Hide sections that are not relevant for a type
 - **Default expansion** — Choose whether each section starts expanded or collapsed
 - **Column layout** — Set 1 or 2 columns per custom section

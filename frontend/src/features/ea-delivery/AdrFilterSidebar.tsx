@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
+import { DateField } from "@/components/DateField";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import List from "@mui/material/List";
@@ -14,7 +15,11 @@ import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
 import Collapse from "@mui/material/Collapse";
 import Tooltip from "@mui/material/Tooltip";
+import Tabs from "@mui/material/Tabs";
+import Tab from "@mui/material/Tab";
 import MaterialSymbol from "@/components/MaterialSymbol";
+import ColumnFreezeToggle from "@/components/grid/ColumnFreezeToggle";
+import { ADR_COLUMN_DEFS, ADR_LOCKED_COLUMN_KEYS } from "./adrGridPrefs";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -56,6 +61,14 @@ interface Props {
   availableCardTypes: { key: string; label: string; color: string }[];
   availableLinkedCards: { id: string; name: string; type: string; color: string }[];
   availableSignatories: { userId: string; displayName: string }[];
+  /** colIds hidden in the grid (column chooser state, owned by the panel). */
+  hiddenColumns: Set<string>;
+  /** Grid colIds frozen to the leading edge; the pin on each row toggles one. */
+  frozenColumns: Set<string>;
+  onToggleFrozen: (colId: string) => void;
+  onHiddenColumnsChange: (next: Set<string>) => void;
+  /** Extension-contributed grid columns, choosable like built-in ones. */
+  extensionColumns: { colId: string; label: string }[];
 }
 
 const STATUS_OPTIONS = [
@@ -105,6 +118,149 @@ function SectionHeader({
 }
 
 /* ------------------------------------------------------------------ */
+/*  Columns tab (grid column chooser)                                  */
+/* ------------------------------------------------------------------ */
+
+function ColumnsTab({
+  hiddenColumns,
+  onHiddenColumnsChange,
+  frozenColumns,
+  onToggleFrozen,
+  extensionColumns,
+}: {
+  hiddenColumns: Set<string>;
+  onHiddenColumnsChange: (next: Set<string>) => void;
+  frozenColumns: Set<string>;
+  onToggleFrozen: (colId: string) => void;
+  extensionColumns: { colId: string; label: string }[];
+}) {
+  const { t } = useTranslation("delivery");
+  const [search, setSearch] = useState("");
+
+  const builtInColumns = useMemo(
+    () => ADR_COLUMN_DEFS.map((d) => ({ key: d.key, label: t(d.tKey) })),
+    [t],
+  );
+  const extColumns = useMemo(
+    () => extensionColumns.map((c) => ({ key: c.colId, label: c.label })),
+    [extensionColumns],
+  );
+
+  // Count only hidden keys that map to a real column, so stale prefs (e.g.
+  // an uninstalled extension's column) don't skew the shown count.
+  const allKeys = useMemo(
+    () => new Set([...builtInColumns, ...extColumns].map((c) => c.key)),
+    [builtInColumns, extColumns],
+  );
+  const hiddenCount = useMemo(
+    () => [...hiddenColumns].filter((k) => allKeys.has(k)).length,
+    [hiddenColumns, allKeys],
+  );
+  const shownCount = allKeys.size - hiddenCount;
+
+  const matchesSearch = (label: string) =>
+    !search || label.toLowerCase().includes(search.toLowerCase());
+
+  const toggleColumn = (key: string) => {
+    if (ADR_LOCKED_COLUMN_KEYS.has(key)) return;
+    const next = new Set(hiddenColumns);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    onHiddenColumnsChange(next);
+  };
+
+  const renderRow = (col: { key: string; label: string }) => {
+    const locked = ADR_LOCKED_COLUMN_KEYS.has(col.key);
+    return (
+      // The pin is a sibling of the row button, never a child: a locked row
+      // disables its button (which would swallow the click), and a locked
+      // column is exactly the one worth freezing.
+      <Box key={col.key} sx={{ display: "flex", alignItems: "center" }}>
+      <ListItemButton
+        dense
+        disabled={locked}
+        onClick={() => toggleColumn(col.key)}
+        sx={{ py: 0, borderRadius: 1, flex: 1, minWidth: 0 }}
+      >
+        <ListItemIcon sx={{ minWidth: 32 }}>
+          <Checkbox
+            edge="start"
+            size="small"
+            checked={locked || !hiddenColumns.has(col.key)}
+            disabled={locked}
+            tabIndex={-1}
+            disableRipple
+          />
+        </ListItemIcon>
+        <ListItemText
+          primary={col.label}
+          secondary={locked ? t("adr.columns.alwaysVisible") : undefined}
+          primaryTypographyProps={{ fontSize: 13 }}
+          secondaryTypographyProps={{ fontSize: 11 }}
+        />
+      </ListItemButton>
+      <ColumnFreezeToggle
+        frozen={frozenColumns.has(col.key)}
+        onToggle={() => onToggleFrozen(col.key)}
+      />
+      </Box>
+    );
+  };
+
+  return (
+    <>
+      <TextField
+        size="small"
+        fullWidth
+        placeholder={t("adr.columns.searchPlaceholder")}
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        sx={{ mb: 1, "& .MuiInputBase-root": { fontSize: 12, height: 30 } }}
+      />
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          mb: 0.5,
+        }}
+      >
+        <Typography variant="caption" color="text.secondary">
+          {t("adr.columns.shownCount", { count: shownCount })}
+        </Typography>
+        {hiddenCount > 0 && (
+          <Button
+            size="small"
+            onClick={() => onHiddenColumnsChange(new Set())}
+            startIcon={<MaterialSymbol icon="restart_alt" size={16} />}
+            sx={{ textTransform: "none", fontSize: 12 }}
+          >
+            {t("adr.columns.reset")}
+          </Button>
+        )}
+      </Box>
+      <List dense disablePadding>
+        {builtInColumns.filter((c) => matchesSearch(c.label)).map(renderRow)}
+      </List>
+      {extColumns.length > 0 && (
+        <>
+          <Divider sx={{ my: 1 }} />
+          <Typography
+            variant="subtitle2"
+            sx={{ fontSize: 13, fontWeight: 600, px: 0.5, mb: 0.5 }}
+          >
+            {t("adr.columns.extensions")}
+          </Typography>
+          <List dense disablePadding>
+            {extColumns.filter((c) => matchesSearch(c.label)).map(renderRow)}
+          </List>
+        </>
+      )}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -118,9 +274,16 @@ export default function AdrFilterSidebar({
   availableCardTypes,
   availableLinkedCards,
   availableSignatories,
+  hiddenColumns,
+  onHiddenColumnsChange,
+  frozenColumns,
+  onToggleFrozen,
+  extensionColumns,
 }: Props) {
-  // delivery namespace — keys: adr.filter.*
+  // delivery namespace — keys: adr.filter.* / adr.columns.*
   const { t } = useTranslation(["delivery", "common"]);
+
+  const [tab, setTab] = useState(0);
 
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     cardTypes: true,
@@ -273,7 +436,7 @@ export default function AdrFilterSidebar({
           overflow: "hidden",
         }}
       >
-        {/* Header */}
+        {/* Header — Filters / Columns tabs (mirrors the Inventory sidebar) */}
         <Box
           sx={{
             display: "flex",
@@ -285,25 +448,77 @@ export default function AdrFilterSidebar({
             borderColor: "divider",
           }}
         >
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <Typography variant="subtitle2" sx={{ fontSize: 14 }}>
-              {t("common:filter.title", "Filters")}
-            </Typography>
-            {activeCount > 0 && (
-              <Chip
-                label={t("adr.filter.activeCount", { count: activeCount })}
-                size="small"
-                color="primary"
-                sx={{ height: 20, fontSize: 11 }}
-              />
-            )}
-          </Box>
+          <Tabs
+            value={tab}
+            onChange={(_, v) => setTab(v)}
+            sx={{
+              minHeight: 36,
+              "& .MuiTab-root": {
+                minHeight: 36,
+                py: 0,
+                textTransform: "none",
+                fontSize: 14,
+                minWidth: 0,
+              },
+            }}
+          >
+            <Tab
+              label={
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  {t("common:filter.title", "Filters")}
+                  {activeCount > 0 && (
+                    <Box
+                      sx={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        bgcolor: "primary.main",
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
+                </Box>
+              }
+            />
+            <Tab
+              label={
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  {t("adr.columns.title")}
+                  {hiddenColumns.size > 0 && (
+                    <Box
+                      sx={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        bgcolor: "primary.main",
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
+                </Box>
+              }
+            />
+          </Tabs>
           <IconButton size="small" onClick={onToggleCollapse}>
             <MaterialSymbol icon="chevron_left" size={20} />
           </IconButton>
         </Box>
 
-        {/* Scrollable content */}
+        {/* Scrollable content — Columns tab */}
+        {tab === 1 && (
+          <Box sx={{ flex: 1, overflow: "auto", p: 1.5 }}>
+            <ColumnsTab
+              hiddenColumns={hiddenColumns}
+              onHiddenColumnsChange={onHiddenColumnsChange}
+              frozenColumns={frozenColumns}
+              onToggleFrozen={onToggleFrozen}
+              extensionColumns={extensionColumns}
+            />
+          </Box>
+        )}
+
+        {/* Scrollable content — Filters tab */}
+        {tab === 0 && (
         <Box sx={{ flex: 1, overflow: "auto", p: 1.5 }}>
           {/* Clear all */}
           {activeCount > 0 && (
@@ -540,23 +755,19 @@ export default function AdrFilterSidebar({
           />
           <Collapse in={expandedSections.dateCreated}>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1, mb: 1.5, mt: 0.5 }}>
-              <TextField
-                type="date"
+              <DateField
                 size="small"
                 fullWidth
                 label={t("adr.filter.from")}
                 value={filters.dateCreatedFrom}
-                onChange={(e) => setDateField("dateCreatedFrom", e.target.value)}
-                InputLabelProps={{ shrink: true }}
+                onChange={(v) => setDateField("dateCreatedFrom", v)}
               />
-              <TextField
-                type="date"
+              <DateField
                 size="small"
                 fullWidth
                 label={t("adr.filter.to")}
                 value={filters.dateCreatedTo}
-                onChange={(e) => setDateField("dateCreatedTo", e.target.value)}
-                InputLabelProps={{ shrink: true }}
+                onChange={(v) => setDateField("dateCreatedTo", v)}
               />
             </Box>
           </Collapse>
@@ -572,23 +783,19 @@ export default function AdrFilterSidebar({
           />
           <Collapse in={expandedSections.dateModified}>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1, mb: 1.5, mt: 0.5 }}>
-              <TextField
-                type="date"
+              <DateField
                 size="small"
                 fullWidth
                 label={t("adr.filter.from")}
                 value={filters.dateModifiedFrom}
-                onChange={(e) => setDateField("dateModifiedFrom", e.target.value)}
-                InputLabelProps={{ shrink: true }}
+                onChange={(v) => setDateField("dateModifiedFrom", v)}
               />
-              <TextField
-                type="date"
+              <DateField
                 size="small"
                 fullWidth
                 label={t("adr.filter.to")}
                 value={filters.dateModifiedTo}
-                onChange={(e) => setDateField("dateModifiedTo", e.target.value)}
-                InputLabelProps={{ shrink: true }}
+                onChange={(v) => setDateField("dateModifiedTo", v)}
               />
             </Box>
           </Collapse>
@@ -604,27 +811,24 @@ export default function AdrFilterSidebar({
           />
           <Collapse in={expandedSections.dateSigned}>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1, mb: 1.5, mt: 0.5 }}>
-              <TextField
-                type="date"
+              <DateField
                 size="small"
                 fullWidth
                 label={t("adr.filter.from")}
                 value={filters.dateSignedFrom}
-                onChange={(e) => setDateField("dateSignedFrom", e.target.value)}
-                InputLabelProps={{ shrink: true }}
+                onChange={(v) => setDateField("dateSignedFrom", v)}
               />
-              <TextField
-                type="date"
+              <DateField
                 size="small"
                 fullWidth
                 label={t("adr.filter.to")}
                 value={filters.dateSignedTo}
-                onChange={(e) => setDateField("dateSignedTo", e.target.value)}
-                InputLabelProps={{ shrink: true }}
+                onChange={(v) => setDateField("dateSignedTo", v)}
               />
             </Box>
           </Collapse>
         </Box>
+        )}
       </Box>
 
       {/* Resize handle */}

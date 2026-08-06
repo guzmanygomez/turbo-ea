@@ -34,6 +34,15 @@ Cliquez sur **+ Nouveau type** pour créer un type de fiche personnalisé. Confi
 
 Cliquez sur n'importe quel type pour ouvrir le **Tiroir de détail du type**. Vous pouvez y configurer :
 
+#### Couleur du type
+
+Chaque type de carte — y compris les types intégrés — possède une couleur personnalisable utilisée dans l'inventaire, les rapports, les vues de dépendances et les diagrammes. Vous pouvez ainsi aligner Turbo EA sur les conventions visuelles de votre organisation (par exemple les palettes TOGAF/ArchiMate : éléments métier en jaune/orange, applications en bleu).
+
+- Choisissez une couleur avec la pastille de couleur du panneau. Un avertissement apparaît lorsque la couleur choisie offre un contraste très faible sur fond clair ou sombre.
+- Les types intégrés affichent un bouton de **réinitialisation** à côté de la pastille dès que la couleur diffère de la valeur par défaut de Turbo EA, afin de toujours pouvoir revenir à la palette standard.
+- Le texte affiché sur les couleurs de type (puces, formes de diagramme) bascule automatiquement entre noir et blanc pour rester lisible, en mode clair comme en mode sombre.
+- Le sélecteur affiche un **aperçu en direct** à côté de la palette : nom du type, puce, icône de carte, sous-type, pastille d'ID de carte et nœud de vue de dépendances, rendus une fois en mode clair et une fois en mode sombre, mis à jour au fil de la sélection.
+
 #### Champs
 
 Les champs définissent les attributs personnalisés disponibles sur les fiches de ce type. Chaque champ possède :
@@ -60,6 +69,17 @@ Les champs sont organisés en **sections** sur la page de détail des fiches. Vo
 - Réorganiser les champs au sein d'une section par glisser-déposer, et déplacer un champ vers une autre section via son action **déplacer**
 
 Le nom de section special `__description` ajoute les champs à la section Description de la page de détail des fiches.
+
+#### ID de carte
+
+Activez la **génération d'ID de carte** pour attribuer aux cartes de ce type un ID stable et lisible (par exemple `APP-00001`). L'ID apparaît sous forme de pastille copiable à côté du type de la carte, comme colonne optionnelle (triable et filtrable) dans l'inventaire, dans les exports Excel et dans les formules des champs calculés (via `data.reference`).
+
+Le **numéro est toujours généré automatiquement** ; vous ne contrôlez que le **préfixe**. À l'activation, un préfixe suggéré (dérivé du nom du type, ex. `APP-`) s'affiche sous forme de texte — cliquez sur le crayon pour le modifier. Deux réglages ajustent le numéro :
+
+- **Début** — le premier numéro de la série (par défaut `1`).
+- **Chiffres min.** — largeur du remplissage par des zéros (par défaut `5`), donc `1` s'affiche `00001`. C'est un minimum ; les numéros s'allongent une fois dépassés. Un **Exemple** affiche en direct le premier ID.
+
+Les ID sont **uniques globalement, en lecture seule, jamais réutilisés ni modifiés**. La séquence de numéros est suivie **par préfixe sur tout l'espace de travail** : deux types partageant un préfixe forment une seule série continue et sans collision. Dès qu'une carte de ce type a un ID, tout le format — préfixe, début et chiffres min. — est verrouillé (les champs deviennent en lecture seule) ; vous pouvez encore désactiver la génération. L'enregistrement n'attribue jamais d'ID aux cartes existantes ; utilisez le bouton dédié **Générer les ID** pour combler le retard à la demande (avec barre de progression et confirmation).
 
 #### Évaluation de la qualité des données
 
@@ -97,6 +117,15 @@ Lorsqu'aucun sous-type n'est sélectionné sur une fiche (ou que le type n'a pas
 
 Définissez des rôles personnalisés pour ce type (par ex. « Responsable Applicatif », « Responsable Technique »). Chaque rôle porte des **permissions au niveau de la fiche** qui sont combinées avec le rôle au niveau de l'application de l'utilisateur lors de l'accès à une fiche. Voir [Utilisateurs et rôles](users.md) pour plus de détails sur le modèle de permissions.
 
+Chaque rôle possède une **clé** (l'identifiant stocké sur les fiches, utilisé par les colonnes d'import/export `stakeholder:<clé_du_rôle>`) et un **libellé** (ce que voient les utilisateurs). La clé suit la même convention que toute autre clé du métamodèle — uniquement des lettres et des chiffres, commençant par une lettre, 3 à 50 caractères, par convention en camelCase comme `businessArchitect`. Elle est renseignée automatiquement à partir du libellé, vous avez donc rarement besoin d'en saisir une.
+
+Les rôles peuvent être retirés de deux façons :
+
+- **Archiver** — le rôle demeure sur les fiches qui l'utilisent déjà mais ne peut plus être attribué, et il cesse d'accorder ses permissions au niveau de la fiche. Les rôles archivés apparaissent derrière le commutateur **Afficher les archivés** et peuvent être restaurés à tout moment. C'est le bon choix pour un rôle réellement utilisé.
+- **Supprimer** — définitif, et proposé uniquement tant que le rôle n'est pas utilisé. Turbo EA refuse de supprimer un rôle détenu par quelqu'un sur une fiche de ce type, ciblé par une enquête, ou qui est le dernier rôle actif du type ; la boîte de dialogue de confirmation précise le motif et propose de l'archiver à la place. C'est ainsi que l'on nettoie un rôle créé par erreur.
+
+La clé d'un rôle peut être corrigée tant que **personne ne détient le rôle** — les enquêtes qui le ciblent suivent le renommage automatiquement, et renommer l'unique rôle d'un type ne pose pas de problème puisque le rôle lui survit. Dès que quelqu'un détient le rôle, la clé est verrouillée et le champ en explique la raison. Les rôles créés avant cette convention conservent leur clé existante et continuent de fonctionner ; seule une clé nouvelle ou modifiée est vérifiée.
+
 #### Traductions
 
 Cliquez sur le bouton **Traduire** dans la barre d'outils du tiroir de type pour ouvrir le **Dialogue de traductions**. Vous pouvez y fournir des traductions pour tous les libellés du métamodèle dans chaque langue supportée :
@@ -128,6 +157,10 @@ Les types de relations définissent les connexions autorisées entre les types d
 | **Cardinalité** | n:m (plusieurs-à-plusieurs) ou 1:n (un-à-plusieurs) |
 
 Cliquez sur **+ Nouveau type de relation** pour créer une relation, ou cliquez sur un type existant pour modifier ses libellés et attributs.
+
+Les champs **Libellé** et **Libellé inverse** sont saisis dans la langue que vous utilisez actuellement — l'intitulé du champ indique laquelle (par exemple *Libellé (Français)*). Renommer une relation met à jour cette langue partout où le verbe apparaît : la section **Relations** d'une fiche, les colonnes de relation de l'inventaire, les rapports, les portails et les diagrammes. Les autres langues conservent leur propre formulation jusqu'à ce que vous les traduisiez.
+
+Utilisez **Gérer les traductions** en haut de l'onglet Types de relation pour traduire les verbes de toutes les relations dans chaque langue activée en une seule fois. Choisissez un onglet de langue, saisissez la formulation à côté de la source anglaise et enregistrez — le compteur de chaque onglet indique combien de verbes manquent encore dans cette langue. L'anglais n'y figure pas : c'est la formulation portée par la relation elle-même, et un verbe non traduit y revient.
 
 ### Attributs de relation
 
@@ -219,7 +252,7 @@ Le scanner de conformité et le flux de promotion en risque fonctionnent **même
 
 Pour chaque type de fiche, la section **Mise en page** dans le tiroir du type contrôle la structure de la page de détail des fiches :
 
-- **Ordre des sections** -- Glissez les sections (Description, EOL, Cycle de vie, Hiérarchie, Relations et sections personnalisées) pour les réorganiser
+- **Ordre des sections** -- Glissez les sections (Description, EOL, Cycle de vie, Hiérarchie, Étiquettes, Relations et sections personnalisées) pour les réorganiser
 - **Visibilité** -- Masquez les sections non pertinentes pour un type
 - **Développement par défaut** -- Choisissez si chaque section commence développée ou repliée
 - **Disposition en colonnes** -- Définissez 1 ou 2 colonnes par section personnalisée

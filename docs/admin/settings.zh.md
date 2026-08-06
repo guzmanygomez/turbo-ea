@@ -11,6 +11,9 @@
 | **Web 门户** | `/admin/settings?tab=web-portals` | 公共只读门户的 slug、可见性过滤器 | [Web 门户](web-portals.md) |
 | **ServiceNow** | `/admin/settings?tab=servicenow` | ServiceNow 连接、同步配置、身份映射 | [ServiceNow 集成](servicenow.md) |
 | **TurboLens** | `/admin/settings?tab=turbolens` | TurboLens 特定开关、已启用的法规、分析轮询 | 见下方[TurboLens 设置](#turbolens-1) |
+| **迁移** | `/admin/settings?tab=migration` | 从其他 EA 平台导入，以及在 Turbo EA 实例之间完整传输工作区 | [平台迁移](migration.md) |
+| **审计日志** | `/admin/settings?tab=audit-log` | 变更记录账本——谁改了什么，以及变更来自 Web 界面、API 还是 AI 工具 | — |
+| **资源** | `/admin/settings?tab=resources` | 附加到卡片的所有文件和链接，含存储统计与批量清理 | [资源](resources.md) |
 
 本页的其余部分介绍 **常规** 标签页。
 
@@ -21,6 +24,10 @@
 ### Logo
 
 上传自定义 logo，显示在顶部导航栏中。支持的格式：PNG、JPEG、SVG、WebP、GIF。点击**重置**可恢复默认的 Turbo EA logo。
+
+### 导航栏样式
+
+选择顶部导航栏的背景色和文字颜色。所选样式适用于实例的**所有用户**，包括桌面端和移动端（含移动端侧边菜单）。可从七种精选预设中选择——藏青（默认）、浅色、炭黑、石板灰、蓝色、森林绿或紫红——也可选择**自定义**，通过取色器自由设置背景色和文字颜色。保存前，实时预览会展示导航栏的效果；当文字与背景的对比度过低（低于 WCAG AA）时会显示警告。点击**恢复默认**可恢复默认样式。
 
 ### 网站图标
 
@@ -96,10 +103,10 @@ Turbo EA 会发送邀请邮件、调查通知、密码重置以及其他系统�
 | 字段 | 说明 |
 |------|------|
 | **SMTP 主机** | 您邮件服务器的主机名（例如 `smtp.gmail.com`） |
-| **SMTP 端口** | 服务器端口（TLS 通常为 587） |
+| **SMTP 端口** | 服务器端口（STARTTLS 为 587，隐式 TLS/SSL 为 465） |
 | **SMTP 用户** | 身份验证用户名 |
 | **SMTP 密码** | 身份验证密码（加密存储） |
-| **使用 TLS** | 启用 STARTTLS 加密（推荐） |
+| **使用 TLS** | 启用 STARTTLS 加密（推荐）。端口 465 会忽略此设置，始终使用隐式 TLS/SSL |
 
 ### Microsoft Graph API（推荐用于 Microsoft 365）
 

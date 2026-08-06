@@ -23,6 +23,15 @@ def _read_version() -> str:
 
 APP_VERSION = _read_version()
 
+# The vendor's extension catalogue — a hard constant, deliberately NOT an
+# environment variable. The Store tab on Admin → Extensions is part of the
+# product on every install; there is no opt-in/opt-out configuration
+# (repointing it means forking, exactly like the trusted vendor keys in
+# app/core/extension_signing.py). Air-gapped instances need nothing: an
+# unreachable catalogue degrades to a friendly offline hint and the
+# file-based install flow is always fully functional.
+EXTENSION_STORE_URL = "https://store.turbo-ea.org"
+
 
 class Settings:
     PROJECT_NAME: str = "Turbo EA"
@@ -33,6 +42,17 @@ class Settings:
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "turboea")
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "turboea")
     POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "turboea")
+
+    # Connection-pool sizing for the single async engine (app/database.py).
+    # The backend runs one uvicorn process, so its total connection budget is
+    # ``DB_POOL_SIZE + DB_MAX_OVERFLOW`` — 30 by default. The bundled Postgres
+    # allows 100, but a managed instance on a low-cost plan often caps the
+    # database far below 30 (``ALTER DATABASE … CONNECTION LIMIT``), which
+    # surfaces as ``too many connections for database "turboea"``. Lower these
+    # to fit under such a cap; see docs/admin/operations.md.
+    DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "20"))
+    DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "10"))
+    DB_POOL_TIMEOUT: int = int(os.getenv("DB_POOL_TIMEOUT", "30"))
 
     # Audit-log (mutation_batches) retention. The hourly purge loop
     # deletes batches whose ``created_at`` is older than this; events
@@ -49,6 +69,12 @@ class Settings:
 
     SECRET_KEY: str = os.getenv("SECRET_KEY", "change-me-in-production")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+
+    # Lifetime of an SSO-gated web-portal visitor session (account-less). Kept
+    # shorter than a user session: portal tokens are stateless, so the TTL is
+    # the revocation granularity for a de-provisioned visitor (unpublishing the
+    # portal is the instant kill switch). Default 8h.
+    PORTAL_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("PORTAL_TOKEN_EXPIRE_MINUTES", "480"))
 
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
 
@@ -85,6 +111,20 @@ class Settings:
     # Public base URL used in email links — seeded from the stored email
     # settings (app_base_url) at startup / on save; empty means localhost.
     _app_base_url: str = ""
+
+    # Control-plane ops API (optional — the /api/v1/ops router only accepts
+    # requests when this Ed25519 public key (base64 raw 32 bytes) is set.
+    # Managed Turbo EA Cloud deployments inject it; self-hosted installs
+    # leave it empty and the ops API answers 404.
+    OPS_PUBLIC_KEY: str = os.getenv("OPS_PUBLIC_KEY", "")
+
+    # Base URL of the vendor's extension catalogue (static hosting serving
+    # catalog.json + the public .teax bundles). Powers the in-product Store
+    # tab: the backend proxies the catalogue and downloads bundles from
+    # here — read-only, no account, no token, and every download goes
+    # through the same signature verification as a manual upload. A code
+    # constant by design (see the module-level comment) — no env override.
+    EXTENSION_STORE_URL: str = EXTENSION_STORE_URL
 
     # AI / LLM (optional — disabled by default)
     AI_PROVIDER_URL: str = os.getenv("AI_PROVIDER_URL", "")

@@ -137,6 +137,7 @@ class CardResponse(BaseModel):
     approval_status: str
     data_quality: float
     external_id: str | None = None
+    reference: str | None = None
     alias: str | None = None
     archived_at: datetime | None = None
     created_by: str | None = None
@@ -182,6 +183,48 @@ class CardRelationSummaryHierarchy(BaseModel):
 class CardRelationSummaryResponse(BaseModel):
     by_type: list[CardRelationSummaryEntry]
     hierarchy: CardRelationSummaryHierarchy
+
+
+class DescendantRelationSummaryEntry(BaseModel):
+    """One row of the descendant-relation summary — how many *additional*
+    distinct cards are reachable through this card's descendants for a given
+    relation type.
+
+    Powers the "+N in sub-items" chip on the Relations section. The count
+    excludes peers the card is already directly related to, so the chip only
+    ever advertises rows the user cannot already see in the list above it.
+    """
+
+    relation_type_key: str
+    count: int
+
+
+class DescendantRelationVia(BaseModel):
+    """The descendant that actually owns the relation — the provenance chip."""
+
+    id: str
+    name: str
+    type: str
+
+
+class DescendantRelationRow(BaseModel):
+    """One rolled-up peer card, deduped across every descendant that links it."""
+
+    id: str
+    name: str
+    type: str
+    subtype: str | None = None
+    lifecycle: dict[str, str] = Field(default_factory=dict)
+    via: list[DescendantRelationVia]
+
+
+class DescendantRelationsResponse(BaseModel):
+    rows: list[DescendantRelationRow]
+    total: int
+    # Distinct sub-items contributing across the WHOLE result set, not just the
+    # current page — it powers the "N cards · via M sub-items" header, which
+    # would be misleading if it only counted the visible rows.
+    via_total: int = 0
 
 
 class CardTypeCount(BaseModel):
@@ -251,6 +294,9 @@ class CardBulkArchiveRequest(BaseModel):
     card_ids: list[str] = Field(..., min_length=1, max_length=10000)
     child_strategy: ChildStrategy | None = None
     cascade_all_related: bool = False
+    # Free-text audit note recorded on each card.archived event (used by the
+    # MCP archive_cards tool; previously accepted-and-dropped — see #802 audit).
+    reason: str | None = Field(default=None, max_length=2000)
 
 
 CardBulkSkipReason = Literal["already_archived", "not_found"]

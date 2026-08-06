@@ -3,9 +3,9 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 
 from app.api.deps import get_current_user
 from app.database import get_db
@@ -16,6 +16,7 @@ from app.models.relation_type import RelationType
 from app.models.user import User
 from app.schemas.relation import (
     CardRef,
+    RelationBulkOperation,
     RelationBulkRequest,
     RelationBulkResponse,
     RelationBulkResult,
@@ -30,6 +31,12 @@ from app.services.event_bus import event_bus
 from app.services.permission_service import PermissionService
 
 router = APIRouter(prefix="/relations", tags=["relations"])
+
+# Upper bound on `GET /relations?card_ids=`. Callers that need more (the Excel
+# exporter walks the whole filtered inventory) chunk client-side; rejecting is
+# deliberate so an over-long list can never be silently truncated into a
+# partial answer that reads as complete.
+MAX_CARD_IDS_PER_QUERY = 500
 
 
 async def _resolve_relation_labels(
@@ -120,14 +127,35 @@ async def _emit_relation_events(
 
 
 def _rel_to_response(
-    r: Relation, *, strip_cost_keys: frozenset[str] = frozenset()
+    r: Relation,
+    *,
+    strip_cost_keys: frozenset[str] = frozenset(),
+    source_ref: CardRef | None = None,
+    target_ref: CardRef | None = None,
 ) -> RelationResponse:
-    source_ref = (
-        CardRef(id=str(r.source.id), type=r.source.type, name=r.source.name) if r.source else None
-    )
-    target_ref = (
-        CardRef(id=str(r.target.id), type=r.target.type, name=r.target.name) if r.target else None
-    )
+    """Serialise a relation.
+
+    ``source_ref`` / ``target_ref`` let a caller supply the card refs it already
+    selected (see ``list_relations``, which joins the two cards and pulls only
+    the four ``CardRef`` columns). When omitted we fall back to the eagerly
+    loaded ``r.source`` / ``r.target`` relationships — note both are
+    ``lazy="noload"``, so an un-eager-loaded relation yields ``None`` rather
+    than emitting a query.
+    """
+    if source_ref is None and r.source:
+        source_ref = CardRef(
+            id=str(r.source.id),
+            type=r.source.type,
+            name=r.source.name,
+            subtype=r.source.subtype,
+        )
+    if target_ref is None and r.target:
+        target_ref = CardRef(
+            id=str(r.target.id),
+            type=r.target.type,
+            name=r.target.name,
+            subtype=r.target.subtype,
+        )
     attrs = r.attributes
     if strip_cost_keys and attrs:
         attrs = {k: v for k, v in attrs.items() if k not in strip_cost_keys}
@@ -186,31 +214,119 @@ async def list_relations(
     user: User = Depends(get_current_user),
     card_id: str | None = Query(None),
     type: str | None = Query(None),
+    card_type: str | None = Query(
+        None,
+        description=(
+            "Card-type key. Keeps relations whose source **or** target card is "
+            "of this type — what the inventory grid needs to populate the "
+            "relation columns of the selected type in one round trip."
+        ),
+    ),
+    types: str | None = Query(
+        None,
+        description=(
+            "Comma-separated relation-type keys. Superset of `type`, which "
+            "stays for backwards compatibility."
+        ),
+    ),
+    card_ids: str | None = Query(
+        None,
+        description=(
+            "Comma-separated card UUIDs. Keeps relations whose source **or** "
+            f"target is one of them. At most {MAX_CARD_IDS_PER_QUERY} ids per "
+            "request — chunk larger sets client-side."
+        ),
+    ),
 ):
-    q = select(Relation)
-
-    # Exclude relations involving cards of hidden types
+    # Join both endpoint cards up front. Every visibility guard below then
+    # becomes a predicate on an already-joined row (reached by primary key)
+    # instead of a `NOT IN (SELECT ...)` subplan — Postgres cannot turn those
+    # into anti-joins, and `cards.status` is unindexed, so the previous form
+    # scanned the whole card table twice per request.
+    #
+    # The joins also let us select just the four `CardRef` columns instead of
+    # `selectinload`-ing two complete `Card` rows (whose `attributes` /
+    # `lifecycle` JSONB and `description` were fetched, hydrated and then
+    # discarded), and they carry the `card_type` filter for free.
+    #
+    # INNER JOIN is safe: `source_id` / `target_id` are NOT NULL FKs with
+    # ON DELETE CASCADE, so a relation without both cards cannot exist.
+    src = aliased(Card)
+    tgt = aliased(Card)
     hidden_types_sq = select(CardType.key).where(CardType.is_hidden == True)  # noqa: E712
-    src_fs = select(Card.id).where(Card.type.in_(hidden_types_sq))
-    q = q.where(Relation.source_id.not_in(src_fs), Relation.target_id.not_in(src_fs))
 
-    # Hide relations whose source or target is archived. Rows are kept on
-    # archive so they reappear on restore; hard-delete and the 30-day
-    # auto-purge clean them up.
-    archived_sq = select(Card.id).where(Card.status == "ARCHIVED")
-    q = q.where(Relation.source_id.not_in(archived_sq), Relation.target_id.not_in(archived_sq))
+    q = (
+        select(
+            Relation,
+            src.id,
+            src.type,
+            src.name,
+            src.subtype,
+            tgt.id,
+            tgt.type,
+            tgt.name,
+            tgt.subtype,
+        )
+        .join(src, Relation.source_id == src.id)
+        .join(tgt, Relation.target_id == tgt.id)
+        # Exclude relations involving cards of hidden types.
+        .where(src.type.not_in(hidden_types_sq), tgt.type.not_in(hidden_types_sq))
+        # Hide relations whose source or target is archived. Rows are kept on
+        # archive so they reappear on restore; hard-delete and the 30-day
+        # auto-purge clean them up.
+        .where(src.status != "ARCHIVED", tgt.status != "ARCHIVED")
+    )
 
     if card_id:
         uid = uuid.UUID(card_id)
         q = q.where((Relation.source_id == uid) | (Relation.target_id == uid))
     if type:
         q = q.where(Relation.type == type)
+    if card_type:
+        q = q.where(or_(src.type == card_type, tgt.type == card_type))
+    if types is not None:
+        type_list = [t.strip() for t in types.split(",") if t.strip()]
+        if not type_list:
+            return []
+        if len(type_list) == 1:
+            q = q.where(Relation.type == type_list[0])
+        else:
+            q = q.where(Relation.type.in_(type_list))
+    if card_ids is not None:
+        raw_ids = [c.strip() for c in card_ids.split(",") if c.strip()]
+        if len(raw_ids) > MAX_CARD_IDS_PER_QUERY:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"card_ids accepts at most {MAX_CARD_IDS_PER_QUERY} ids per request "
+                    f"(got {len(raw_ids)}). Split the set into smaller batches."
+                ),
+            )
+        # Skip silently-malformed UUIDs so a single bad id doesn't 500 a batch,
+        # matching `GET /cards?ids=`.
+        id_list: list[uuid.UUID] = []
+        for raw in raw_ids:
+            try:
+                id_list.append(uuid.UUID(raw))
+            except ValueError:
+                continue
+        if not id_list:
+            return []
+        q = q.where(or_(Relation.source_id.in_(id_list), Relation.target_id.in_(id_list)))
 
-    q = q.options(selectinload(Relation.source), selectinload(Relation.target))
     result = await db.execute(q)
-    rels = list(result.scalars().all())
+    rows = result.all()
+    rels = [row[0] for row in rows]
     redact = await _relation_cost_redaction(db, user, rels)
-    return [_rel_to_response(r, strip_cost_keys=redact.get(r.id, frozenset())) for r in rels]
+    return [
+        _rel_to_response(
+            row[0],
+            strip_cost_keys=redact.get(row[0].id, frozenset()),
+            source_ref=CardRef(id=str(row[1]), type=row[2], name=row[3], subtype=row[4]),
+            target_ref=CardRef(id=str(row[5]), type=row[6], name=row[7], subtype=row[8]),
+        )
+        for row in rows
+    ]
 
 
 @router.post("", response_model=RelationResponse, status_code=201)
@@ -220,32 +336,71 @@ async def create_relation(
     user: User = Depends(get_current_user),
 ):
     await PermissionService.require_permission(db, user, "relations.manage")
-    rel = Relation(
-        type=body.type,
-        source_id=uuid.UUID(body.source_id),
-        target_id=uuid.UUID(body.target_id),
-        attributes=body.attributes or {},
-        description=body.description,
+    source_uuid = uuid.UUID(body.source_id)
+    target_uuid = uuid.UUID(body.target_id)
+
+    # Reuse an existing (type, source, target) relation instead of inserting a
+    # second identical row. Drawing an edge on a diagram between two cards that
+    # are already related must not fork the repository into duplicates
+    # (discussion #905) — the bulk endpoint has always upserted on this key, and
+    # the single-relation path now matches it. Supplied attributes / description
+    # are merged onto the survivor so the relation-picker's values still land.
+    existing = await db.execute(
+        select(Relation).where(
+            Relation.type == body.type,
+            Relation.source_id == source_uuid,
+            Relation.target_id == target_uuid,
+        )
     )
-    db.add(rel)
+    rel = existing.scalar_one_or_none()
+    reused = rel is not None
+    changed: list[str] = []
+
+    if rel is None:
+        rel = Relation(
+            type=body.type,
+            source_id=source_uuid,
+            target_id=target_uuid,
+            attributes=body.attributes or {},
+            description=body.description,
+        )
+        db.add(rel)
+    else:
+        if body.attributes is not None and body.attributes != (rel.attributes or {}):
+            rel.attributes = body.attributes
+            changed.append("attributes")
+        if body.description is not None and body.description != rel.description:
+            rel.description = body.description
+            changed.append("description")
     await db.flush()
 
     # Run calculated fields for both source and target cards
-    source_card = await db.get(Card, uuid.UUID(body.source_id))
-    target_card = await db.get(Card, uuid.UUID(body.target_id))
+    source_card = await db.get(Card, source_uuid)
+    target_card = await db.get(Card, target_uuid)
     if source_card:
         await run_calculations_for_card(db, source_card)
     if target_card:
         await run_calculations_for_card(db, target_card)
 
-    await _emit_relation_events(
-        db,
-        event_type="relation.created",
-        rel=rel,
-        source_card=source_card,
-        target_card=target_card,
-        actor_id=user.id,
-    )
+    if not reused:
+        await _emit_relation_events(
+            db,
+            event_type="relation.created",
+            rel=rel,
+            source_card=source_card,
+            target_card=target_card,
+            actor_id=user.id,
+        )
+    elif changed:
+        await _emit_relation_events(
+            db,
+            event_type="relation.updated",
+            rel=rel,
+            source_card=source_card,
+            target_card=target_card,
+            actor_id=user.id,
+            extra={"fields": changed},
+        )
 
     await db.commit()
     result = await db.execute(
@@ -427,7 +582,44 @@ async def bulk_relations(
     # Dry-run isolation — see the matching comment in `cards.py` bulk-create.
     dry_run_savepoint = await db.begin_nested() if body.dry_run else None
 
-    operations = list(body.operations)
+    results, upserted, deleted, failed = await apply_relation_operations(
+        db, list(body.operations), actor_id=user.id, dry_run=body.dry_run
+    )
+
+    if body.dry_run:
+        assert dry_run_savepoint is not None
+        await dry_run_savepoint.rollback()
+    elif failed > 0 and upserted == 0 and deleted == 0:
+        await db.rollback()
+    else:
+        await db.commit()
+
+    return RelationBulkResponse(
+        results=results,
+        upserted=upserted,
+        deleted=deleted,
+        failed=failed,
+        dry_run=body.dry_run,
+    )
+
+
+async def apply_relation_operations(
+    db: AsyncSession,
+    operations: list[RelationBulkOperation],
+    *,
+    actor_id: uuid.UUID,
+    dry_run: bool,
+) -> tuple[list[RelationBulkResult], int, int, int]:
+    """Apply relation upsert/delete ops within the CURRENT transaction and
+    return ``(results, upserted, deleted, failed)``.
+
+    The caller owns the transaction lifecycle (savepoint / commit / rollback)
+    — this helper never commits. A fresh ``CardResolver`` is loaded here, so
+    when the caller created cards earlier in the same session (the combined
+    ``/cards/bulk-create`` path), name/path refs resolve against those
+    just-created cards too. Events are emitted only when ``dry_run`` is False.
+    """
+    operations = list(operations)
 
     # Preload every referenced relation type in one query.
     rt_keys: set[str] = {op.type for op in operations}
@@ -452,6 +644,18 @@ async def bulk_relations(
     events_to_emit: list[tuple[str, Relation, Card | None, Card | None, dict | None]] = []
 
     for op in operations:
+        # Per-op savepoint so a single failing op (e.g. a relation whose
+        # source/target card no longer exists — a foreign-key violation at
+        # flush time) rolls back only itself instead of poisoning the whole
+        # session transaction and cascading "transaction has been rolled back"
+        # onto every later op. This is what makes the per-op result reporting
+        # below actually hold under a partial failure.
+        op_sp = await db.begin_nested()
+        # Bookkeeping collected inside the savepoint and only committed to the
+        # batch-level accumulators on success (in the `else` branch).
+        op_events: list = []
+        op_impacted: list[uuid.UUID] = []
+        op_result: RelationBulkResult
         try:
             # Distinct name from the outer `for rt in rt_by_key.values()`
             # loop above so mypy can keep the non-Optional narrowing intact.
@@ -475,104 +679,110 @@ async def bulk_relations(
 
             if op.action == "delete":
                 if rel is None:
-                    results.append(RelationBulkResult(row_index=op.row_index, status="noop"))
-                    continue
-                source_card = await db.get(Card, rel.source_id)
-                target_card = await db.get(Card, rel.target_id)
-                events_to_emit.append(("relation.deleted", rel, source_card, target_card, None))
-                await db.delete(rel)
-                impacted_cards.add(source_id)
-                impacted_cards.add(target_id)
-                deleted += 1
-                results.append(RelationBulkResult(row_index=op.row_index, status="deleted"))
-                continue
-
-            # Upsert path.
-            if rel is None:
-                # Cardinality guards: 1:1 forbids a second relation of the
-                # same type from this source or to this target; 1:n forbids
-                # a second relation from the same source.
-                if rt_def.cardinality in ("1:1", "1:n"):
-                    existing_src = await db.scalar(
-                        select(func.count(Relation.id)).where(
-                            Relation.type == op.type, Relation.source_id == source_id
-                        )
-                    )
-                    if existing_src and existing_src > 0:
-                        raise HTTPException(
-                            422,
-                            f"Cardinality {rt_def.cardinality} forbids a second '{op.type}' "
-                            "relation from this source",
-                        )
-                if rt_def.cardinality == "1:1":
-                    existing_tgt = await db.scalar(
-                        select(func.count(Relation.id)).where(
-                            Relation.type == op.type, Relation.target_id == target_id
-                        )
-                    )
-                    if existing_tgt and existing_tgt > 0:
-                        raise HTTPException(
-                            422,
-                            f"Cardinality 1:1 forbids a second '{op.type}' relation to this target",
-                        )
-
-                rel = Relation(
-                    type=op.type,
-                    source_id=source_id,
-                    target_id=target_id,
-                    attributes=op.attributes or {},
-                    description=op.description,
-                )
-                db.add(rel)
-                await db.flush()
-                # Reload with source/target for the event payload.
-                refetched = await db.execute(
-                    select(Relation)
-                    .where(Relation.id == rel.id)
-                    .options(selectinload(Relation.source), selectinload(Relation.target))
-                )
-                rel = refetched.scalar_one()
-                events_to_emit.append(("relation.created", rel, rel.source, rel.target, None))
+                    op_result = RelationBulkResult(row_index=op.row_index, status="noop")
+                else:
+                    source_card = await db.get(Card, rel.source_id)
+                    target_card = await db.get(Card, rel.target_id)
+                    op_events.append(("relation.deleted", rel, source_card, target_card, None))
+                    await db.delete(rel)
+                    await db.flush()
+                    op_impacted += [source_id, target_id]
+                    op_result = RelationBulkResult(row_index=op.row_index, status="deleted")
             else:
-                changed: list[str] = []
-                if op.attributes is not None and op.attributes != (rel.attributes or {}):
-                    rel.attributes = op.attributes
-                    changed.append("attributes")
-                if op.description is not None and op.description != rel.description:
-                    rel.description = op.description
-                    changed.append("description")
-                if changed:
-                    events_to_emit.append(
-                        (
-                            "relation.updated",
-                            rel,
-                            rel.source,
-                            rel.target,
-                            {"fields": changed},
+                # Upsert path.
+                if rel is None:
+                    # Cardinality guards: 1:1 forbids a second relation of the
+                    # same type from this source or to this target; 1:n forbids
+                    # a second relation from the same source.
+                    if rt_def.cardinality in ("1:1", "1:n"):
+                        existing_src = await db.scalar(
+                            select(func.count(Relation.id)).where(
+                                Relation.type == op.type, Relation.source_id == source_id
+                            )
                         )
-                    )
+                        if existing_src and existing_src > 0:
+                            raise HTTPException(
+                                422,
+                                f"Cardinality {rt_def.cardinality} forbids a second '{op.type}' "
+                                "relation from this source",
+                            )
+                    if rt_def.cardinality == "1:1":
+                        existing_tgt = await db.scalar(
+                            select(func.count(Relation.id)).where(
+                                Relation.type == op.type, Relation.target_id == target_id
+                            )
+                        )
+                        if existing_tgt and existing_tgt > 0:
+                            raise HTTPException(
+                                422,
+                                f"Cardinality 1:1 forbids a second '{op.type}' relation "
+                                "to this target",
+                            )
 
-            impacted_cards.add(source_id)
-            impacted_cards.add(target_id)
-            upserted += 1
-            results.append(
-                RelationBulkResult(
+                    rel = Relation(
+                        type=op.type,
+                        source_id=source_id,
+                        target_id=target_id,
+                        attributes=op.attributes or {},
+                        description=op.description,
+                    )
+                    db.add(rel)
+                    await db.flush()
+                    # Reload with source/target for the event payload.
+                    refetched = await db.execute(
+                        select(Relation)
+                        .where(Relation.id == rel.id)
+                        .options(selectinload(Relation.source), selectinload(Relation.target))
+                    )
+                    rel = refetched.scalar_one()
+                    op_events.append(("relation.created", rel, rel.source, rel.target, None))
+                else:
+                    changed: list[str] = []
+                    if op.attributes is not None and op.attributes != (rel.attributes or {}):
+                        rel.attributes = op.attributes
+                        changed.append("attributes")
+                    if op.description is not None and op.description != rel.description:
+                        rel.description = op.description
+                        changed.append("description")
+                    if changed:
+                        op_events.append(
+                            (
+                                "relation.updated",
+                                rel,
+                                rel.source,
+                                rel.target,
+                                {"fields": changed},
+                            )
+                        )
+
+                op_impacted += [source_id, target_id]
+                op_result = RelationBulkResult(
                     row_index=op.row_index,
                     status="upserted",
                     relation_id=str(rel.id),
                 )
-            )
 
         except HTTPException as exc:
+            await op_sp.rollback()
             failed += 1
             results.append(
                 RelationBulkResult(row_index=op.row_index, status="failed", error=exc.detail)
             )
         except Exception as exc:  # noqa: BLE001 — surface anything to the user
+            await op_sp.rollback()
             failed += 1
             results.append(
                 RelationBulkResult(row_index=op.row_index, status="failed", error=str(exc))
             )
+        else:
+            await op_sp.commit()
+            events_to_emit.extend(op_events)
+            impacted_cards.update(op_impacted)
+            if op_result.status == "deleted":
+                deleted += 1
+            elif op_result.status == "upserted":
+                upserted += 1
+            results.append(op_result)
 
     # Recalculate calculated fields on every card touched by the batch.
     for cid in impacted_cards:
@@ -583,7 +793,7 @@ async def bulk_relations(
     # Emit all events after the writes settle so listeners see consistent
     # state if they query back. Skipped in dry-run mode — nothing was
     # persisted, so listeners must not be told it was.
-    if not body.dry_run:
+    if not dry_run:
         for event_type, rel, source_card, target_card, extra in events_to_emit:
             await _emit_relation_events(
                 db,
@@ -591,22 +801,8 @@ async def bulk_relations(
                 rel=rel,
                 source_card=source_card,
                 target_card=target_card,
-                actor_id=user.id,
+                actor_id=actor_id,
                 extra=extra,
             )
 
-    if body.dry_run:
-        assert dry_run_savepoint is not None
-        await dry_run_savepoint.rollback()
-    elif failed > 0 and upserted == 0 and deleted == 0:
-        await db.rollback()
-    else:
-        await db.commit()
-
-    return RelationBulkResponse(
-        results=results,
-        upserted=upserted,
-        deleted=deleted,
-        failed=failed,
-        dry_run=body.dry_run,
-    )
+    return results, upserted, deleted, failed

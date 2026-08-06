@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import copy
 import logging
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -19,11 +21,34 @@ from app.models.relation_type import RelationType
 from app.models.resource_type import ResourceType
 from app.models.stakeholder import Stakeholder
 from app.models.user import User
+from app.services import card_reference
+from app.services.extensions.registry import extension_registry
+from app.services.hierarchy import (
+    HIERARCHY_LEVEL_KEY,
+    backfill_hierarchy_levels_for_type,
+    hierarchy_level_field_def,
+)
 from app.services.permission_service import PermissionService
+from app.services.seed import DEFAULT_TYPE_COLORS
 
 logger = logging.getLogger("turboea.metamodel")
 
 router = APIRouter(prefix="/metamodel", tags=["metamodel"])
+
+_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _validate_color(body: dict) -> None:
+    """Reject a ``color`` that isn't a #rrggbb hex value.
+
+    Only enforced when the key is present so color-less creates/patches keep
+    working. The column is a plain string — without this guard any value up to
+    20 chars would be persisted and break every consumer that parses the hex.
+    """
+    if "color" in body and not (
+        isinstance(body["color"], str) and _HEX_COLOR_RE.match(body["color"])
+    ):
+        raise HTTPException(400, "color must be a hex value in #rrggbb format")
 
 
 def _scoring_signature(fields_schema: list | None, section_config: dict | None) -> dict:
@@ -40,6 +65,76 @@ def _scoring_signature(fields_schema: list | None, section_config: dict | None) 
                 field_weights[field["key"]] = field.get("weight", 1)
     dq_cfg = (section_config or {}).get("__dataQuality") or {}
     return {"fields": field_weights, "dq": dq_cfg}
+
+
+# ── Extension-gated field capabilities ─────────────────────────────────
+#
+# Two advanced field-authoring capabilities ship as INERT core plumbing: the
+# schema understands them and the card detail renders them unconditionally, but
+# an admin can only *author* them when an installed, enabled, licensed extension
+# grants the matching capability (see registry.grants_for). This is the
+# monetisation boundary — the free core never exposes a UI to create these, and
+# the API strips any attempt to add them without the grant. Rendering is never
+# gated (a licence lapse must never blank a card or delete data), and existing
+# values are grandfathered so a lapse can't block unrelated metamodel edits.
+CAP_FIELD_HELP = "metamodel.field_help"
+CAP_CUSTOM_FIELD_TYPES = "metamodel.custom_field_types"
+_BUILTIN_FIELD_TYPES = frozenset(
+    {
+        "text",
+        "multiline_text",
+        "number",
+        "cost",
+        "boolean",
+        "date",
+        "url",
+        "single_select",
+        "multiple_select",
+    }
+)
+
+
+def _enforce_field_gating(
+    new_schema: list | None, old_schema: list | None, granted: set[str]
+) -> list:
+    """Drop gated field attributes (help text, custom ``ext.*`` types) unless an
+    extension grants them. Grandfathers already-stored values verbatim so a
+    lapse never mutates card data or blocks an unrelated edit."""
+    new_schema = new_schema or []
+    help_granted = CAP_FIELD_HELP in granted
+    custom_granted = CAP_CUSTOM_FIELD_TYPES in granted
+    if help_granted and custom_granted:
+        return new_schema
+
+    old_fields: dict[str, dict] = {}
+    for section in old_schema or []:
+        for f in section.get("fields", []) if isinstance(section, dict) else []:
+            if isinstance(f, dict) and "key" in f:
+                old_fields[f["key"]] = f
+
+    for section in new_schema:
+        if not isinstance(section, dict):
+            continue
+        for f in section.get("fields", []):
+            if not isinstance(f, dict):
+                continue
+            old = old_fields.get(f.get("key")) or {}
+            if not help_granted:
+                # Grandfather only the exact stored help; drop anything new/changed.
+                for attr in ("help", "helpTranslations"):
+                    if f.get(attr) != old.get(attr):
+                        if old.get(attr) is None:
+                            f.pop(attr, None)
+                        else:
+                            f[attr] = old[attr]
+            if not custom_granted:
+                ftype = f.get("type")
+                if isinstance(ftype, str) and ftype.startswith("ext."):
+                    old_type = old.get("type")
+                    if old_type == ftype:
+                        continue  # grandfather an already-stored custom type
+                    f["type"] = old_type if old_type in _BUILTIN_FIELD_TYPES else "text"
+    return new_schema
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
@@ -59,10 +154,14 @@ def _serialize_type(t: CardType) -> dict:
         "fields_schema": t.fields_schema or [],
         "stakeholder_roles": t.stakeholder_roles or [],
         "section_config": t.section_config or {},
+        "reference_config": t.reference_config or {},
         "built_in": t.built_in,
         "is_hidden": t.is_hidden,
         "sort_order": t.sort_order,
         "translations": t.translations or {},
+        # Seed default for built-in types (None for custom types) — powers the
+        # admin "reset to default color" affordance.
+        "default_color": DEFAULT_TYPE_COLORS.get(t.key),
     }
 
 
@@ -234,9 +333,22 @@ async def _cleanup_removed_fields_and_options(
         for f in section.get("fields", []):
             new_fields[f["key"]] = f
 
-    # 1) Removed fields — delete the key from attributes JSONB
+    # 1) Removed fields — delete the key from attributes JSONB.
+    #    Extension-contributed fields (stamped ``ext``) are exempt: an
+    #    extension's disable/uninstall path removes them from the schema *while
+    #    preserving the stored values* (see field_contributions.remove_field_
+    #    contributions), and a manual metamodel edit that drops the field must
+    #    honour the same contract rather than hard-deleting the data.
     removed_field_keys = set(old_fields.keys()) - set(new_fields.keys())
     for fk in removed_field_keys:
+        if old_fields[fk].get("ext"):
+            logger.info(
+                "Skipping data cleanup for extension-owned field '%s' on type '%s' "
+                "(values preserved for re-enable)",
+                fk,
+                type_key,
+            )
+            continue
         result = await db.execute(
             text(
                 "UPDATE cards SET attributes = attributes - :field_key "
@@ -364,6 +476,67 @@ async def get_field_usage(
     return {"field_key": field_key, "card_count": count_result.scalar() or 0}
 
 
+@router.get("/types/{key}/reference-usage")
+async def get_reference_usage(
+    key: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Report card ID coverage for the metamodel editor (#811).
+
+    - ``count``   — cards of this type that already have an ID.
+    - ``missing`` — cards with no ID yet (what the Generate button would fill).
+    - ``locked``  — once ``count`` > 0 the prefix / start / min-digits are frozen.
+    """
+    await PermissionService.require_permission(db, user, "admin.metamodel")
+    result = await db.execute(select(CardType).where(CardType.key == key))
+    if not result.scalar_one_or_none():
+        raise HTTPException(404, "Card type not found")
+
+    count = (
+        await db.execute(
+            select(func.count())
+            .select_from(Card)
+            .where(Card.type == key, Card.reference.isnot(None))
+        )
+    ).scalar() or 0
+    missing = (
+        await db.execute(
+            select(func.count()).select_from(Card).where(Card.type == key, Card.reference.is_(None))
+        )
+    ).scalar() or 0
+    return {"count": count, "missing": missing, "locked": count > 0}
+
+
+@router.post("/types/{key}/generate-references")
+async def generate_references(
+    key: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Assign IDs to existing cards of this type that don't have one yet (#811).
+
+    Explicit, on-demand counterpart to the type Save (which never backfills).
+    Fill-only + idempotent — re-running only fills newly-missing cards, so it
+    never rewrites an existing ID. Uses the stored config, so save the format
+    first.
+
+    (A future "regenerate all" would compose from the same primitive:
+    ``UPDATE cards SET reference = NULL WHERE type = key`` then
+    ``backfill_references_for_type`` — deliberately not built here.)
+    """
+    await PermissionService.require_permission(db, user, "admin.metamodel")
+    result = await db.execute(select(CardType).where(CardType.key == key))
+    card_type = result.scalar_one_or_none()
+    if not card_type:
+        raise HTTPException(404, "Card type not found")
+    if card_reference.get_mode(card_type) != "auto":
+        raise HTTPException(400, "Card ID generation is not enabled for this type.")
+    generated = await card_reference.backfill_references_for_type(db, card_type)
+    await db.commit()
+    return {"generated": generated}
+
+
 @router.get("/types/{key}/section-usage")
 async def get_section_usage(
     key: str,
@@ -450,11 +623,61 @@ async def get_option_usage(
     }
 
 
+def _has_hierarchy_level_field(schema: list) -> bool:
+    return any(
+        isinstance(s, dict) and f.get("key") == HIERARCHY_LEVEL_KEY
+        for s in (schema or [])
+        for f in s.get("fields", [])
+    )
+
+
+def _inject_hierarchy_level_field(schema: list) -> list:
+    """Return a copy of ``schema`` with the readonly ``hierarchyLevel`` field.
+
+    No-op copy when a field keyed ``hierarchyLevel`` already exists anywhere
+    (never hijack an admin-authored field). Appends to the first section,
+    creating a ``General`` section when the schema is empty. Always returns a
+    fresh list so a caller reassigning to a JSONB column triggers dirty tracking.
+    """
+    schema = copy.deepcopy(schema or [])
+    if _has_hierarchy_level_field(schema):
+        return schema
+    if schema:
+        schema[0].setdefault("fields", []).append(hierarchy_level_field_def())
+    else:
+        schema = [{"section": "General", "fields": [hierarchy_level_field_def()]}]
+    return schema
+
+
+def _remove_injected_hierarchy_level_field(schema: list) -> list:
+    """Return a copy of ``schema`` without the auto-injected ``hierarchyLevel`` def.
+
+    Only strips the injected shape (readonly number keyed ``hierarchyLevel``);
+    leaves a non-matching admin-authored field alone and never touches stored
+    card attribute values.
+    """
+    schema = copy.deepcopy(schema or [])
+    for section in schema:
+        if not isinstance(section, dict):
+            continue
+        section["fields"] = [
+            f
+            for f in section.get("fields", [])
+            if not (
+                f.get("key") == HIERARCHY_LEVEL_KEY
+                and f.get("readonly")
+                and f.get("type") == "number"
+            )
+        ]
+    return schema
+
+
 @router.post("/types", status_code=201)
 async def create_type(
     body: dict, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
 ):
     await PermissionService.require_permission(db, user, "admin.metamodel")
+    _validate_color(body)
     existing = await db.execute(select(CardType).where(CardType.key == body.get("key", "")))
     if existing.scalar_one_or_none():
         raise HTTPException(400, "Type key already exists")
@@ -467,6 +690,18 @@ async def create_type(
         {"key": "responsible", "label": "Responsible"},
         {"key": "observer", "label": "Observer"},
     ]
+    await extension_registry.refresh_from_db(db)
+    fields_schema = _enforce_field_gating(
+        body.get("fields_schema", []), [], extension_registry.granted_capabilities()
+    )
+    # Auto-add the readonly hierarchyLevel field for hierarchical types (after
+    # gating, which only strips help/ext.* fields — a plain number field is safe).
+    if body.get("has_hierarchy"):
+        fields_schema = _inject_hierarchy_level_field(fields_schema)
+    try:
+        reference_config = card_reference.validate_reference_config(body.get("reference_config"))
+    except card_reference.ReferenceConfigError as exc:
+        raise HTTPException(400, str(exc)) from exc
     t = CardType(
         key=body["key"],
         label=body["label"],
@@ -477,8 +712,9 @@ async def create_type(
         has_hierarchy=body.get("has_hierarchy", False),
         has_successors=body.get("has_successors", False),
         subtypes=body.get("subtypes", []),
-        fields_schema=body.get("fields_schema", []),
+        fields_schema=fields_schema,
         stakeholder_roles=body.get("stakeholder_roles", default_roles),
+        reference_config=reference_config,
         built_in=False,
         is_hidden=False,
         sort_order=body.get("sort_order", next_order),
@@ -499,6 +735,7 @@ async def update_type(
     key: str, body: dict, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
 ):
     await PermissionService.require_permission(db, user, "admin.metamodel")
+    _validate_color(body)
     result = await db.execute(select(CardType).where(CardType.key == key))
     t = result.scalar_one_or_none()
     if not t:
@@ -535,11 +772,21 @@ async def update_type(
             t.fields_schema or [],
             body["fields_schema"] or [],
         )
+        # Strip extension-gated field attributes (help text, custom types) that
+        # aren't unlocked by a licensed extension — grandfathering stored values.
+        await extension_registry.refresh_from_db(db)
+        body["fields_schema"] = _enforce_field_gating(
+            body["fields_schema"] or [],
+            t.fields_schema or [],
+            extension_registry.granted_capabilities(),
+        )
 
     # Snapshot the data-quality-relevant config so we can re-score existing
     # cards if (and only if) the admin changed field weights or the built-in
     # contributor weights.
     old_signature = _scoring_signature(t.fields_schema, t.section_config)
+    old_has_hierarchy = t.has_hierarchy
+    old_reference_config = dict(t.reference_config or {})
 
     updatable = [
         "label",
@@ -559,7 +806,12 @@ async def update_type(
     ]
     for field in updatable:
         if field in body:
-            setattr(t, field, body[field])
+            if field == "translations":
+                # NOT NULL column — a client clearing every translation must land
+                # an empty map, not a constraint violation.
+                t.translations = body["translations"] or {}
+            else:
+                setattr(t, field, body[field])
 
     # Auto-provide the self-referential lineage relation type whenever lineage is
     # enabled. Run unconditionally-when-true (idempotent, one indexed lookup) so it
@@ -567,6 +819,51 @@ async def update_type(
     # relation type — on their next save.
     if t.has_successors:
         await _ensure_successor_relation_type(db, t.key)
+
+    # Keep the auto-injected hierarchyLevel field in sync with has_hierarchy.
+    # Runs on the final merged state so it self-heals older hierarchical types
+    # on any save (idempotent — same style as _ensure_successor_relation_type).
+    if t.has_hierarchy:
+        if not _has_hierarchy_level_field(t.fields_schema or []):
+            t.fields_schema = _inject_hierarchy_level_field(t.fields_schema or [])
+        if not old_has_hierarchy:
+            # Newly hierarchical — backfill existing cards so the column/filter
+            # is populated immediately instead of lazily per card edit.
+            await backfill_hierarchy_levels_for_type(db, key)
+    else:
+        # Hierarchy disabled — drop the injected field def but KEEP card
+        # attribute values (invisible without a def, meaningful again on re-enable).
+        t.fields_schema = _remove_injected_hierarchy_level_field(t.fields_schema or [])
+
+    # ── Human-readable reference config (discussion #811) ──
+    if "reference_config" in body:
+        try:
+            new_ref_cfg = card_reference.validate_reference_config(body["reference_config"])
+        except card_reference.ReferenceConfigError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        old_ref_cfg = card_reference.validate_reference_config(old_reference_config)
+        # The ID FORMAT (prefix + number series) is frozen once any card of this
+        # type carries a reference — generated IDs must stay unique, never reused,
+        # and stable for the card's lifetime. Only the on/off mode may still change
+        # (turning it off pauses generation; existing IDs are untouched either way).
+        has_refs = (
+            await db.execute(
+                select(Card.id).where(Card.type == key, Card.reference.isnot(None)).limit(1)
+            )
+        ).first() is not None
+        if has_refs and any(
+            new_ref_cfg[f] != old_ref_cfg[f] for f in ("prefix", "start", "padding")
+        ):
+            raise HTTPException(
+                400,
+                "The card ID format is locked because cards of this type already have IDs.",
+            )
+        t.reference_config = new_ref_cfg
+        # NB: saving the config never backfills existing cards — that bulk,
+        # permanent mutation is deliberately a separate, explicit action
+        # (POST /types/{key}/generate-references), so an unrelated type Save can
+        # never mint thousands of IDs by surprise. New cards still auto-generate
+        # on create; only the historical backlog is generated on demand.
 
     await db.commit()
     await db.refresh(t)
@@ -687,6 +984,42 @@ _SUCCESSOR_TRANSLATIONS: dict = {
 }
 
 
+def _sync_english_verb_translations(r: RelationType, body: dict) -> None:
+    """Keep ``translations[...]["en"]`` in step with a raw ``label`` rename.
+
+    ``translations[property][locale]`` **shadows** the raw column everywhere the
+    frontend resolves a metamodel label, and every seeded relation type carries an
+    ``en`` entry (``_inject_english_translations_relation`` in ``seed.py``; existing
+    installs were backfilled by migration 038). A client that renames a relation type
+    by writing ``label`` alone therefore changed nothing a user could see (#912).
+
+    Only applies when the caller does **not** manage ``translations`` itself — the
+    admin UI sends its own per-locale map and must win, so this is the safety net for
+    API-only writers (MCP, scripts, imports).
+    """
+    if "translations" in body:
+        return
+    trans = dict(r.translations or {})
+    changed = False
+    for column, prop in (("label", "label"), ("reverse_label", "reverse_label")):
+        if column not in body:
+            continue
+        value = getattr(r, column)
+        entries = trans.get(prop)
+        if not isinstance(entries, dict) or "en" not in entries or entries["en"] == value:
+            continue
+        updated = {**entries}
+        if value:
+            updated["en"] = value
+        else:
+            # Cleared verb — drop the stale translation so resolution falls back.
+            updated.pop("en", None)
+        trans[prop] = updated
+        changed = True
+    if changed:
+        r.translations = trans
+
+
 async def _ensure_successor_relation_type(db: AsyncSession, card_type_key: str) -> None:
     """Provision the self-referential ``rel{Key}Successor`` relation type that the card
     detail lineage section needs when "Supports Lineage" is enabled on a card type.
@@ -738,7 +1071,9 @@ async def _ensure_successor_relation_type(db: AsyncSession, card_type_key: str) 
             built_in=False,
             is_hidden=False,
             sort_order=next_order,
-            translations=_SUCCESSOR_TRANSLATIONS,
+            # Deep-copy: assigning the module constant by reference would let an
+            # in-place edit of one row's translations corrupt it process-wide.
+            translations=copy.deepcopy(_SUCCESSOR_TRANSLATIONS),
         )
     )
 
@@ -821,7 +1156,7 @@ async def create_relation_type(
         built_in=False,
         is_hidden=False,
         sort_order=body.get("sort_order", next_order),
-        translations=body.get("translations", {}),
+        translations=body.get("translations") or {},
         source_visible=body.get("source_visible", True),
         source_mandatory=body.get("source_mandatory", False),
         target_visible=body.get("target_visible", True),
@@ -905,8 +1240,14 @@ async def update_relation_type(
             r.attributes_schema = _merge_relation_attributes_schema(
                 r.attributes_schema or [], body["attributes_schema"]
             )
+        elif field == "translations":
+            # NOT NULL column — a client clearing every translation must land
+            # an empty map, not a constraint violation.
+            r.translations = body["translations"] or {}
         else:
             setattr(r, field, body[field])
+
+    _sync_english_verb_translations(r, body)
 
     await db.commit()
     await db.refresh(r)

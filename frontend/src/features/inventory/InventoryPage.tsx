@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Link as RouterLink, useNavigate, useSearchParams } from "react-router-dom";
+import { Link as RouterLink, useNavigate, useSearchParams } from "react-router";
 import { AgGridReact } from "ag-grid-react";
 import type { ColDef, CellValueChangedEvent, SelectionChangedEvent, RowClickedEvent, SortChangedEvent, GridReadyEvent, ColumnState } from "ag-grid-community";
 import Box from "@mui/material/Box";
@@ -13,6 +13,7 @@ import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
 import Menu from "@mui/material/Menu";
 import ListItemText from "@mui/material/ListItemText";
+import CircularProgress from "@mui/material/CircularProgress";
 import Divider from "@mui/material/Divider";
 import TextField from "@mui/material/TextField";
 import Chip from "@mui/material/Chip";
@@ -22,6 +23,7 @@ import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import Alert from "@mui/material/Alert";
+import Snackbar from "@mui/material/Snackbar";
 import Drawer from "@mui/material/Drawer";
 import Tooltip from "@mui/material/Tooltip";
 import ListSubheader from "@mui/material/ListSubheader";
@@ -29,12 +31,13 @@ import Autocomplete from "@mui/material/Autocomplete";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import useMediaQuery from "@mui/material/useMediaQuery";
-import { useTheme } from "@mui/material/styles";
+import { useTheme, darken, lighten, type Theme } from "@mui/material/styles";
 import MaterialSymbol from "@/components/MaterialSymbol";
-import LifecycleBadge from "@/components/LifecycleBadge";
+import LifecycleBadge, { getCurrentPhase } from "@/components/LifecycleBadge";
 import ArchiveDeleteDialog from "@/features/cards/ArchiveDeleteDialog";
 import BulkRestoreDialog from "@/features/cards/BulkRestoreDialog";
 import CreateCardDialog from "@/components/CreateCardDialog";
+import CardPicker, { type CardOption } from "@/components/CardPicker";
 import CardDetailSidePanel from "@/components/CardDetailSidePanel";
 import InventoryFilterSidebar, {
   CORE_COLUMN_KEYS,
@@ -46,31 +49,85 @@ import InventoryFilterSidebar, {
 } from "./InventoryFilterSidebar";
 import ImportDialog from "./ImportDialog";
 import { exportToExcel, exportCurrentViewToExcel } from "./excelExport";
+import { dateColumnFilterDef } from "@/lib/dateColumnFilter";
 import RelationCellPopover from "./RelationCellPopover";
 import { useMetamodel } from "@/hooks/useMetamodel";
+import { useCardSearch } from "@/hooks/useCardSearch";
 import { useTypeLabel, useRelationLabel, useFieldLabel, useOptionLabel, useSubtypeLabel } from "@/hooks/useResolveLabel";
+import { readableTextColor } from "@/lib/color";
 import { useAuth } from "@/hooks/useAuth";
 import { useThemeMode } from "@/hooks/useThemeMode";
 import { useIsRtl } from "@/hooks/useIsRtl";
 import { useDateFormat } from "@/hooks/useDateFormat";
-import { api, ApiError } from "@/api/client";
+import { useLatestRequest } from "@/hooks/useLatestRequest";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { api, ApiError, isAbortError } from "@/api/client";
 import { APPROVAL_STATUS_COLORS } from "@/theme/tokens";
 import TagPicker from "@/components/TagPicker";
+import { useColumnFreeze } from "@/components/grid/useColumnFreeze";
 import TagsCellEditor from "@/features/inventory/TagsCellEditor";
-import type { Card, CardListResponse, ColumnLayoutItem, FieldDef, Relation, RelationType, TagGroup, TagRef } from "@/types";
+import ParentCellEditor from "@/features/inventory/ParentCellEditor";
+import StakeholdersCellEditor from "@/features/inventory/StakeholdersCellEditor";
+import type { Card, CardListResponse, ColumnLayoutItem, FieldDef, Relation, RelationType, StakeholderRef, StakeholderRoleOption, TagGroup, TagRef } from "@/types";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
 
 const DEFAULT_SIDEBAR_WIDTH = 300;
 
-function getLifecyclePhase(card: Card): string {
-  const lc = card.lifecycle || {};
-  const now = new Date().toISOString().slice(0, 10);
-  for (const phase of ["endOfLife", "phaseOut", "active", "phaseIn", "plan"]) {
-    if (lc[phase] && lc[phase] <= now) return phase;
-  }
-  return "";
+/** Display names for one role's stakeholder refs, joined — used for
+ * sorting and (together with emails) column filtering, matching the chips
+ * the user sees. */
+function stakeholdersToText(refs?: StakeholderRef[]): string {
+  return (refs || [])
+    .map((s) => s.user_display_name || s.user_email || s.user_id)
+    .join("; ");
 }
+
+/** Emails for one role's stakeholder refs, joined — the export/copy value
+ * (valueFormatter). Emails are the only unambiguous user reference, so the
+ * current-view export and clipboard carry them, mirroring the full-workbook
+ * `stakeholder:<role>` cells and LeanIX's subscriptions columns. */
+function stakeholdersToEmails(refs?: StakeholderRef[]): string {
+  return (refs || [])
+    .map((s) => s.user_email || s.user_display_name || s.user_id)
+    .join("; ");
+}
+
+/** The phase a card is currently in, as a key ("active", "plan", …), or "".
+ *
+ * Delegates to `getCurrentPhase` — the very function `LifecycleBadge` renders
+ * from — so the sidebar's Lifecycle filter, the grid's Lifecycle column and the
+ * badge in that column can never disagree. There used to be two hand-rolled
+ * copies of the phase walk here (this one and an inline `valueGetter`), both
+ * missing the badge's "a plan date in the future still counts as Plan" rule: a
+ * card planned for next year showed a Plan chip but filtered as "(empty)" and
+ * exported a blank cell. */
+function getLifecyclePhase(card: Card): string {
+  return getCurrentPhase(card.lifecycle as Record<string, string> | undefined) ?? "";
+}
+
+/**
+ * Shared styling for the action buttons in the selection bar.
+ *
+ * Those buttons sit on a `primary.main` (blue) bar and carry their own text
+ * colour on a `background.paper` chip. The hover state must therefore be an
+ * *opaque* colour: `action.selected` is a translucent overlay, so it let the
+ * blue bar show through and the button's own coloured text lost contrast —
+ * most visibly on Mass Edit, whose blue text ended up on a blue background.
+ * Deriving the hover shade from the real paper colour keeps the same
+ * text-contrast relationship as the resting state, in light and dark alike.
+ */
+const SELECTION_BAR_BUTTON_SX = {
+  bgcolor: "background.paper",
+  textTransform: "none",
+  whiteSpace: "nowrap",
+  "&:hover": {
+    bgcolor: (theme: Theme) =>
+      theme.palette.mode === "dark"
+        ? lighten(theme.palette.background.paper, 0.12)
+        : darken(theme.palette.background.paper, 0.08),
+  },
+} as const;
 
 /**
  * Pre-compute the breadcrumb path *up to* each card's parent (i.e. excluding
@@ -118,6 +175,58 @@ function buildParentPaths(items: Card[]): Map<string, string> {
 }
 
 /**
+ * Index the loaded rows by id, so the Parent column can resolve a `parent_id`
+ * to a display name. Parents outside the loaded page resolve to an empty
+ * label — the inventory pages at 10 000 rows, so in practice the parent of a
+ * same-typed card is always present.
+ *
+ * The Parent column deliberately keeps the raw `parent_id` as its *cell
+ * value* and resolves the name only at render time. An earlier version had
+ * `valueGetter` return a `{id, name}` object out of a `data`-keyed memo while
+ * `valueSetter` mutated the row in place: the array reference never changed,
+ * so the memo never recomputed, and AG Grid's post-setter re-read handed
+ * `onCellValueChanged` the stale value. The move then "applied" the parent the
+ * card already had. Keeping the value primitive makes getter and setter
+ * consistent by construction.
+ */
+function buildCardIndex(items: Card[]): Map<string, Card> {
+  return new Map(items.map((card) => [card.id, card]));
+}
+
+/**
+ * Map each card to itself plus every descendant, so the parent picker can hide
+ * the choices that would obviously cycle. The server rejects cycles regardless
+ * (it is the only place that can see the full tree), but excluding them here
+ * avoids offering a choice that is guaranteed to fail.
+ */
+function buildDescendantIndex(items: Card[]): Map<string, string[]> {
+  const childrenOf = new Map<string, string[]>();
+  for (const card of items) {
+    if (!card.parent_id) continue;
+    const siblings = childrenOf.get(card.parent_id);
+    if (siblings) siblings.push(card.id);
+    else childrenOf.set(card.parent_id, [card.id]);
+  }
+
+  const index = new Map<string, string[]>();
+  for (const card of items) {
+    const collected: string[] = [card.id];
+    // Iterative walk with a seen-set: a pre-existing cycle in the data must
+    // not hang the grid.
+    const seen = new Set<string>([card.id]);
+    for (let i = 0; i < collected.length; i++) {
+      for (const childId of childrenOf.get(collected[i]) ?? []) {
+        if (seen.has(childId)) continue;
+        seen.add(childId);
+        collected.push(childId);
+      }
+    }
+    index.set(card.id, collected);
+  }
+  return index;
+}
+
+/**
  * Build a lookup: for each relation type, map cardId → array of related names.
  * When the selected type is the source, we index by source_id and show target names.
  * When the selected type is the target, we index by target_id and show source names.
@@ -153,6 +262,13 @@ interface InventoryPrefs {
   // AG Grid column layout (order/width/pinning), captured via getColumnState().
   // Visibility still flows from `columns` → `selectedColumns` → colDef `hide`.
   columnState?: ColumnLayoutItem[];
+  // Frozen colIds. Owned separately from `columnState` because the layout's
+  // restore only runs until the user first rearranges a column, which is not
+  // a window a freeze can depend on.
+  frozenColumns?: string[];
+  // AG Grid column-filter model (api.getFilterModel()), a layer separate from
+  // `filters` (the sidebar filters). Persisted so column filters survive reload.
+  columnFilterModel?: Record<string, unknown>;
   sortModel?: { colId: string; sort: string }[];
   // Set to true after the one-time migration that surfaces the previously
   // always-on Tags column in users' saved column selection. Without this
@@ -197,10 +313,22 @@ export default function InventoryPage() {
   const canShareBookmarks = !!(user?.permissions?.["*"] || user?.permissions?.["bookmarks.share"]);
   const canOdataBookmarks = !!(user?.permissions?.["*"] || user?.permissions?.["bookmarks.odata"]);
   const canViewCostsGlobally = !!(user?.permissions?.["*"] || user?.permissions?.["costs.view"]);
+  const canManageStakeholders = !!(user?.permissions?.["*"] || user?.permissions?.["stakeholders.manage"]);
   const gridRef = useRef<AgGridReact>(null);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
+  // Whether any AG Grid column filter is active (drives the "Clear filters"
+  // toolbar button). This is the grid's own filter model — a layer separate
+  // from the sidebar `filters` state below. Seeded from persisted prefs so the
+  // button shows immediately on reload.
+  const [hasColumnFilters, setHasColumnFilters] = useState(
+    () => Object.keys(loadPrefs()?.columnFilterModel ?? {}).length > 0,
+  );
+  // Rows displayed after AG Grid column filtering — drives the item-count pill
+  // so it reflects the column filters, not just the sidebar-filtered set.
+  // Null until the grid's first model update; falls back to filteredData.length.
+  const [displayedRowCount, setDisplayedRowCount] = useState<number | null>(null);
 
   // Sidebar state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -279,6 +407,7 @@ export default function InventoryPage() {
   const [data, setData] = useState<Card[]>([]);
   const [, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [gridEditMode, setGridEditMode] = useState(false);
@@ -306,6 +435,13 @@ export default function InventoryPage() {
       })
       .catch(() => setUserNameMap({}));
   }, []);
+
+  // Stakeholder roles for the selected type — drives the per-role
+  // "Stakeholders: <role>" columns. Fetched from /stakeholder-roles (the
+  // authoritative source: role-definition table first, legacy JSONB fallback,
+  // then the built-in Responsible/Observer defaults) rather than
+  // typeConfig.stakeholder_roles, which can lag behind the table.
+  const [stakeholderRoles, setStakeholderRoles] = useState<StakeholderRoleOption[]>([]);
 
   // Dynamic column visibility: set of column keys the user has opted to show
   // Initialized from localStorage if available, otherwise defaults to all when type selected
@@ -347,6 +483,16 @@ export default function InventoryPage() {
   const [columnState, setColumnState] = useState<ColumnLayoutItem[] | undefined>(
     () => savedPrefsRef.current?.columnState,
   );
+  // Frozen colIds. Seeded from their own pref, falling back to the `pinned`
+  // flags of a layout saved before freezing had one, so an existing user's
+  // frozen columns carry over.
+  const [frozenColumns, setFrozenColumns] = useState<string[]>(
+    () =>
+      savedPrefsRef.current?.frozenColumns ??
+      (savedPrefsRef.current?.columnState ?? [])
+        .filter((c) => c.pinned === "left" && c.colId)
+        .map((c) => c.colId),
+  );
   // Mirror of the latest columnState for the apply effect (which keys on
   // columnDefs, not columnState, to avoid re-applying on every capture).
   const columnStateRef = useRef(columnState);
@@ -369,8 +515,53 @@ export default function InventoryPage() {
   const applyColumnLayout = useCallback((layout: ColumnLayoutItem[] | null) => {
     restorePendingRef.current = true;
     setColumnState(layout ?? undefined);
+    // A view carries its freezes inside the layout's `pinned`; hand them to
+    // `frozenColumns`, which is what actually drives the grid.
+    setFrozenColumns(
+      (layout ?? []).filter((c) => c.pinned === "left" && c.colId).map((c) => c.colId),
+    );
     setLayoutNonce((n) => n + 1);
   }, []);
+
+  // --- Frozen (pinned) columns ----------------------------------------------
+  // Kept as their own list of colIds and stamped onto the column defs by
+  // `applyFrozen()`, rather than read back out of the layout snapshot above.
+  // The snapshot is the wrong owner: its restore stops re-applying the moment
+  // the user drags or resizes anything (`restorePendingRef`), so a freeze made
+  // after that was persisted but never restored on the next load. A colDef
+  // carries `pinned` from the first render, with no restore window to miss —
+  // the same shape every other grid uses.
+  const columnFreeze = useColumnFreeze(gridRef, {
+    frozen: frozenColumns,
+    onFrozenChange: setFrozenColumns,
+  });
+
+  // --- Column filters (AG Grid filter model) --------------------------------
+  // The grid's own column-filter model, persisted to localStorage and saved
+  // views alongside the layout above. `columnFilterModelRef` feeds the restore
+  // effect (which keys on columnDefs so late attribute columns get their
+  // filters); `applyingFilterRef` guards against the restore's own
+  // onFilterChanged wiping the model when a not-yet-present column is dropped;
+  // `filterNonce` forces a re-apply when a view is applied without a columnDefs
+  // change.
+  const [columnFilterModel, setColumnFilterModel] = useState<Record<string, unknown>>(
+    () => savedPrefsRef.current?.columnFilterModel ?? {},
+  );
+  const columnFilterModelRef = useRef(columnFilterModel);
+  columnFilterModelRef.current = columnFilterModel;
+  const applyingFilterRef = useRef(false);
+  const [filterNonce, setFilterNonce] = useState(0);
+
+  // Apply a filter model (or clear with null). Used by the toolbar Clear button,
+  // the sidebar "Clear all", and applying a saved view. Updates state/ref and
+  // bumps the nonce; the restore effect performs the actual setFilterModel.
+  const applyColumnFilters = useCallback((model: Record<string, unknown> | null) => {
+    const next = model ?? {};
+    columnFilterModelRef.current = next;
+    setColumnFilterModel(next);
+    setFilterNonce((n) => n + 1);
+  }, []);
+
   const [exportMenuAnchor, setExportMenuAnchor] = useState<null | HTMLElement>(null);
 
   // Mass edit state
@@ -392,11 +583,17 @@ export default function InventoryPage() {
     }[]
   >([]);
   const [massEditSucceeded, setMassEditSucceeded] = useState(0);
-  // Relation mass-edit state
+  // Relation mass-edit state. `massEditRelMode` is shared by the relation,
+  // tag and parent fields — all three are add/remove (set/clear) toggles.
   const [massEditRelMode, setMassEditRelMode] = useState<"add" | "remove">("add");
   const [massEditRelTargets, setMassEditRelTargets] = useState<{ id: string; name: string; type: string }[]>([]);
   const [massEditRelSearch, setMassEditRelSearch] = useState("");
-  const [massEditRelOptions, setMassEditRelOptions] = useState<{ id: string; name: string; type: string }[]>([]);
+  const [massEditRelSearchDebounced, setMassEditRelSearchDebounced] = useState("");
+  // Parent mass-edit state
+  const [massEditParent, setMassEditParent] = useState<CardOption | null>(null);
+  // Inline (Grid Edit) failures that the user needs a reason for — a rejected
+  // re-parent is the first, since the server owns every hierarchy rule.
+  const [cellEditError, setCellEditError] = useState("");
 
   // Mass archive / delete state
   const [massArchiveOpen, setMassArchiveOpen] = useState(false);
@@ -428,6 +625,27 @@ export default function InventoryPage() {
   // Derive the single selected type for column rendering (only when exactly one type selected)
   const selectedType = filters.types.length === 1 ? filters.types[0] : "";
   const typeConfig = types.find((t) => t.key === selectedType);
+
+  // Load the selected type's stakeholder roles (per-role columns follow the
+  // same single-type rule as attribute/relation columns).
+  useEffect(() => {
+    if (!selectedType) {
+      setStakeholderRoles([]);
+      return;
+    }
+    let cancelled = false;
+    api
+      .get<StakeholderRoleOption[]>(`/stakeholder-roles?type_key=${encodeURIComponent(selectedType)}`)
+      .then((roles) => {
+        if (!cancelled) setStakeholderRoles(Array.isArray(roles) ? roles : []);
+      })
+      .catch(() => {
+        if (!cancelled) setStakeholderRoles([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedType]);
 
   // Common fields across multiple selected types (for dynamic columns)
   const commonFields = useMemo<FieldDef[]>(() => {
@@ -521,8 +739,11 @@ export default function InventoryPage() {
         rt.source_type_key === selectedType ? rt.target_type_key : rt.source_type_key;
       cols.add(`rel_${otherKey}`);
     }
+    for (const role of stakeholderRoles) {
+      cols.add(`stakeholder_${role.key}`);
+    }
     return cols;
-  }, [typeConfig, commonFields, relevantRelTypes, selectedType]);
+  }, [typeConfig, commonFields, relevantRelTypes, selectedType, stakeholderRoles]);
 
   // Auto-populate columns with all-checked defaults when type changes (and not yet initialized)
   useEffect(() => {
@@ -540,36 +761,63 @@ export default function InventoryPage() {
       filters,
       columns: Array.from(selectedColumns),
       columnState,
+      frozenColumns,
+      columnFilterModel,
       sortModel,
       coreTagsMerged: true,
     });
-  }, [filters, selectedColumns, sortModel, columnState]);
+  }, [filters, selectedColumns, sortModel, columnState, frozenColumns, columnFilterModel]);
+
+  // Free-text search is debounced; every other filter stays instant. Typing
+  // "SAP ERP" used to fire seven whole-repository requests, one per keystroke.
+  // `filters.search` itself is left untouched so the sidebar text field and the
+  // localStorage persistence keep their current behaviour.
+  const [debouncedSearch, searchPending] = useDebouncedValue(filters.search, 300);
+
+  // Only the newest card request may write the grid. Clearing the type filter
+  // fetches the whole repository, so it can easily land after a later, narrower
+  // request and overwrite it — that was #882.
+  const cardsRequest = useLatestRequest();
 
   const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (filters.types.length === 1) params.set("type", filters.types[0]);
-      if (filters.search) params.set("search", filters.search);
-      if (filters.approvalStatuses.length > 0) {
-        params.set("approval_status", filters.approvalStatuses.join(","));
+    await cardsRequest.run(async ({ signal, isCurrent }) => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (filters.types.length === 1) params.set("type", filters.types[0]);
+        if (debouncedSearch) params.set("search", debouncedSearch);
+        if (filters.approvalStatuses.length > 0) {
+          params.set("approval_status", filters.approvalStatuses.join(","));
+        }
+        if (filters.showArchived) {
+          params.set("status", "ARCHIVED");
+        }
+        if (filters.mineScope) {
+          params.set("mine", filters.mineScope);
+        }
+        params.set("page_size", "10000");
+        const res = await api.get<CardListResponse>(`/cards?${params}`, { signal });
+        if (!isCurrent()) return; // superseded — the newer request owns the grid
+        setData(res.items);
+        setTotal(res.total);
+        setLoadError(false);
+      } catch (err) {
+        if (!isCurrent() || isAbortError(err)) return;
+        setLoadError(true);
+      } finally {
+        // Only the winner clears the spinner. An aborted predecessor rejecting
+        // first would otherwise flash "done" over the previous filter's rows.
+        if (isCurrent()) setLoading(false);
       }
-      if (filters.showArchived) {
-        params.set("status", "ARCHIVED");
-      }
-      if (filters.mineScope) {
-        params.set("mine", filters.mineScope);
-      }
-      params.set("page_size", "10000");
-      const res = await api.get<CardListResponse>(
-        `/cards?${params}`
-      );
-      setData(res.items);
-      setTotal(res.total);
-    } finally {
-      setLoading(false);
-    }
-  }, [filters.types, filters.search, filters.approvalStatuses, filters.showArchived, filters.mineScope]);
+    });
+  }, [
+    cardsRequest,
+    filters.types,
+    debouncedSearch,
+    filters.approvalStatuses,
+    filters.showArchived,
+    filters.mineScope,
+  ]);
 
   useEffect(() => {
     loadData();
@@ -584,46 +832,92 @@ export default function InventoryPage() {
     return keys;
   }, [relTypeGroupMap]);
 
-  // Fetch and index relations for each relevant relation type
+  // True while the relation request is in flight. Relation cells render a
+  // placeholder instead of looking empty — an empty cell is indistinguishable
+  // from "no relations", which is what made slow loads read as missing data
+  // (and made "Export current view" silently lossy).
+  const [relationsLoading, setRelationsLoading] = useState(false);
+  // Only the newest relations request may write `relationsMap` — otherwise a
+  // slow request for type A lands after a fast one for type B and overwrites it.
+  const relationsRequest = useLatestRequest();
+  // The in-flight fetch, so "Export current view" can await it.
+  const relationsInflightRef = useRef<Promise<void> | null>(null);
+
+  // Fetch and index every relation touching the selected card type.
+  //
+  // One request, filtered server-side to `card_type` + the relation types this
+  // grid actually renders. This used to be N parallel `?type=<key>` requests
+  // (10+ for Application), each returning every relation of that type in the
+  // instance, of which `buildRelationIndex` kept only the edges touching the
+  // selected type.
   const fetchRelations = useCallback(async () => {
     if (!selectedType || allRelTypeKeys.length === 0) {
+      relationsRequest.cancel();
+      relationsInflightRef.current = null;
       setRelationsMap(new Map());
+      setRelationsLoading(false);
       return;
     }
 
-    // Fetch all relation types (including grouped duplicates)
-    const allRts = allRelTypeKeys.map((key) => relationTypes.find((rt) => rt.key === key)!).filter(Boolean);
-    const newMap = new Map<string, Map<string, string[]>>();
-    const results = await Promise.all(
-      allRts.map((rt) =>
-        api.get<Relation[]>(`/relations?type=${rt.key}`).catch(() => [] as Relation[])
-      )
-    );
+    setRelationsLoading(true);
+    const run = relationsRequest.run(async ({ signal, isCurrent }) => {
+      let rels: Relation[] = [];
+      try {
+        const params = new URLSearchParams({
+          card_type: selectedType,
+          types: allRelTypeKeys.join(","),
+        });
+        rels = await api.get<Relation[]>(`/relations?${params}`, { signal });
+      } catch {
+        rels = [];
+      }
+      // A newer fetch has started; its result wins and it owns the flags.
+      if (!isCurrent()) return;
 
-    for (let i = 0; i < allRts.length; i++) {
-      const rt = allRts[i];
-      const rels = results[i];
-      newMap.set(rt.key, buildRelationIndex(rels, rt, selectedType));
-    }
-    setRelationsMap(newMap);
-  }, [selectedType, allRelTypeKeys, relationTypes]);
+      // Bucket the flat response per relation type, then index each bucket
+      // exactly as before — `relationsMap` keeps its shape, so the column
+      // defs, sidebar filters and relation popover are unaffected.
+      const byType = new Map<string, Relation[]>();
+      for (const rel of rels) {
+        const bucket = byType.get(rel.type);
+        if (bucket) bucket.push(rel);
+        else byType.set(rel.type, [rel]);
+      }
+      const newMap = new Map<string, Map<string, string[]>>();
+      for (const key of allRelTypeKeys) {
+        const rt = relationTypes.find((r) => r.key === key);
+        if (!rt) continue;
+        newMap.set(key, buildRelationIndex(byType.get(key) ?? [], rt, selectedType));
+      }
+      setRelationsMap(newMap);
+      setRelationsLoading(false);
+      relationsInflightRef.current = null;
+    });
+    relationsInflightRef.current = run;
+    await run;
+  }, [selectedType, allRelTypeKeys, relationTypes, relationsRequest]);
 
-  // Fetch relations when data or relevant types change
+  // Relations depend only on the selected type and its relation types — the
+  // server filters by `card_type`, so the result is the same regardless of
+  // which cards happen to be loaded. Deliberately NOT keyed on `data`: that
+  // dependency re-fetched every relation in the instance on each search
+  // keystroke, filter toggle, archive and inline edit. Explicit refreshes
+  // after a relation edit still call `fetchRelations()` directly.
   useEffect(() => {
-    if (data.length === 0) {
-      setRelationsMap(new Map());
-      return;
-    }
-
-    let cancelled = false;
-    fetchRelations().then(() => { if (cancelled) return; });
-    return () => { cancelled = true; };
-  }, [fetchRelations, data]);
+    fetchRelations();
+  }, [fetchRelations]);
 
   // Pre-computed hierarchy display paths (id → "Parent / Child").
   // Built once from raw API data; completely detached from the mutable row objects
   // that AG Grid holds, so grid-internal writes to data[field] cannot corrupt paths.
   const parentPaths = useMemo(() => buildParentPaths(data), [data]);
+  const cardsById = useMemo(() => buildCardIndex(data), [data]);
+  const descendantIndex = useMemo(() => buildDescendantIndex(data), [data]);
+  const parentNameOf = useCallback(
+    (parentId: string | null | undefined) =>
+      (parentId ? cardsById.get(parentId)?.name : "") ?? "",
+    [cardsById],
+  );
 
   // Client-side filtering
   const filteredData = useMemo(() => {
@@ -772,6 +1066,19 @@ export default function InventoryPage() {
       if (fieldDef?.readonly) return;
       const attrs = { ...card.attributes, [key]: event.newValue };
       await api.patch(`/cards/${card.id}`, { attributes: attrs });
+    } else if (field === "parent_id") {
+      const newParentId = (event.newValue as string | null) ?? null;
+      try {
+        await api.patch(`/cards/${card.id}`, { parent_id: newParentId });
+      } catch (err) {
+        // The server owns the hierarchy rules — a cycle, a name collision under
+        // the new parent, or a capability depth limit all land here. Surface the
+        // reason rather than silently snapping the cell back.
+        setCellEditError(err instanceof Error ? err.message : t("gridEdit.parentFailed"));
+      }
+      // Reload either way: a success cascades levels (and the Path column) down
+      // the subtree, a failure has to revert the optimistic row state.
+      loadData();
     } else if (field === "tags") {
       const oldIds = new Set<string>((event.oldValue as TagRef[] | undefined ?? []).map((t) => t.id));
       const newIds = new Set<string>((event.newValue as TagRef[] | undefined ?? []).map((t) => t.id));
@@ -782,6 +1089,31 @@ export default function InventoryPage() {
       }
       for (const id of toRemove) {
         await api.delete(`/cards/${card.id}/tags/${id}`);
+      }
+    } else if (field.startsWith("stakeholder_")) {
+      const role = field.slice("stakeholder_".length);
+      const oldUserIds = new Set(
+        (event.oldValue as StakeholderRef[] | undefined ?? []).map((s) => s.user_id),
+      );
+      const newUserIds = new Set(
+        (event.newValue as StakeholderRef[] | undefined ?? []).map((s) => s.user_id),
+      );
+      const operations = [
+        ...[...newUserIds]
+          .filter((id) => !oldUserIds.has(id))
+          .map((id) => ({ action: "add", card_id: card.id, user_id: id, role })),
+        ...[...oldUserIds]
+          .filter((id) => !newUserIds.has(id))
+          .map((id) => ({ action: "remove", card_id: card.id, user_id: id, role })),
+      ];
+      if (operations.length > 0) {
+        try {
+          const res = await api.post<{ failed: number }>("/stakeholders/bulk", { operations });
+          if (res.failed > 0) loadData();
+        } catch {
+          // Revert the optimistic row state (e.g. a per-card permission denial).
+          loadData();
+        }
       }
     }
   };
@@ -839,12 +1171,47 @@ export default function InventoryPage() {
     setGridReady(true);
   }, []);
 
+  // Reflect the grid's column-filter model into `hasColumnFilters` (drives the
+  // toolbar "Clear filters" button) and into the persisted `columnFilterModel`.
+  // Skips the model update while our own restore is running, so re-applying a
+  // model that references a not-yet-present column (which AG Grid silently
+  // drops) doesn't erase that column's filter from the persisted model.
+  const handleFilterChanged = useCallback(() => {
+    const api = gridRef.current?.api;
+    if (!api) return;
+    const model = api.getFilterModel() ?? {};
+    setHasColumnFilters(Object.keys(model).length > 0);
+    if (applyingFilterRef.current) return;
+    setColumnFilterModel(model);
+  }, []);
+
+  // Keep the item-count pill in sync with the rows AG Grid actually shows.
+  // onModelUpdated fires after row data is set and after every filter/sort, so
+  // the count reflects the active column filters (not just the sidebar filters).
+  const handleModelUpdated = useCallback(() => {
+    const api = gridRef.current?.api;
+    if (!api) return;
+    setDisplayedRowCount(api.getDisplayedRowCount());
+  }, []);
+
   // Export only what's on screen: the displayed columns, in their current
   // left-to-right order, with their displayed headers, and only the rows left
   // after filtering — in sort order. WYSIWYG, not importable. Values are read
   // straight from the grid (via valueGetters/valueFormatters) so relation,
   // lifecycle, path and date columns come out exactly as displayed.
-  const handleExportCurrentView = useCallback(() => {
+  const handleExportCurrentView = useCallback(async () => {
+    // Relation columns read from `relationsMap`, which is populated
+    // asynchronously. Exporting mid-fetch used to emit blank relation cells
+    // that looked like real "no relations" data, so wait for the in-flight
+    // request first. Grid values are read after the await, never before.
+    if (relationsInflightRef.current) {
+      try {
+        await relationsInflightRef.current;
+      } catch {
+        // A failed relation fetch already degrades to an empty map; export
+        // what we have rather than blocking the download.
+      }
+    }
     const api = gridRef.current?.api;
     if (!api) return;
     // Exclude AG Grid's auto-generated columns (the row-selection / controls
@@ -881,8 +1248,20 @@ export default function InventoryPage() {
     exportCurrentViewToExcel(rows, columns, { sheetLabel });
   }, [typeConfig, typeLabel, t]);
 
-  // Stable AG Grid config objects — prevents unnecessary grid re-renders
-  const defaultColDef = useMemo(() => ({ sortable: true, filter: true, resizable: true }), []);
+  // Stable AG Grid config objects — prevents unnecessary grid re-renders.
+  // `columnFreeze.headerComponentParams` adds the freeze pin to every column
+  // header; the resulting pinned state rides along in the column layout that
+  // `captureColumnState` already persists (localStorage + saved views).
+  const defaultColDef = useMemo(
+    () => ({
+      sortable: true,
+      filter: true,
+      resizable: true,
+      filterParams: { buttons: ["reset"] },
+      headerComponentParams: columnFreeze.headerComponentParams,
+    }),
+    [columnFreeze.headerComponentParams],
+  );
   const rowSelection = useMemo(() => ({ mode: "multiRow" as const, enableClickSelection: false, headerCheckbox: true, selectAll: "filtered" as const }), []);
   const getRowId = useCallback((p: { data: Card }) => p.data.id, []);
   const getRowStyle = useCallback((p: { data?: Card }) => p.data?.status === "ARCHIVED" ? { opacity: 0.6 } : undefined, []);
@@ -916,6 +1295,13 @@ export default function InventoryPage() {
       fields.push({ key: "subtype", label: t("common:labels.subtype"), group: "core" });
     }
     fields.push({ key: "tags", label: t("columns.tags"), group: "core" });
+    // Parent needs one concrete type to pick from (parent is same-type by
+    // convention everywhere else), so it follows the same single-type rule as
+    // the relation fields below. A card has exactly one parent, so setting the
+    // parent of the selection is also how you make N cards children of X.
+    if (selectedType && typeConfig?.has_hierarchy) {
+      fields.push({ key: "parent", label: t("massEdit.parent.label"), group: "core" });
+    }
     if (typeConfig) {
       for (const section of typeConfig.fields_schema) {
         for (const field of section.fields) {
@@ -976,28 +1362,38 @@ export default function InventoryPage() {
 
   const currentMassField = massEditableFields.find((f) => f.key === massEditField);
 
-  // Search for relation targets when the user is in relation mass-edit mode.
-  // Excludes the cards being mass-edited so users can't accidentally link a card to itself.
+  // Relation-target search runs on the shared `useCardSearch` engine, same as
+  // CardPicker and the diagram Insert-Cards dialog. It browses on open (no
+  // "type to search" gate), pages in more results as the listbox scrolls, and
+  // drops stale responses via the hook's request token.
   useEffect(() => {
-    if (!massEditOpen || !currentMassField?.relInfo) return;
-    if (massEditRelSearch.length < 1) {
-      setMassEditRelOptions([]);
-      return;
-    }
-    const otherTypeKey = currentMassField.relInfo.otherTypeKey;
-    const selectedSet = new Set(selectedIds);
-    const timer = setTimeout(() => {
-      api
-        .get<{ items: { id: string; name: string; type: string }[] }>(
-          `/cards?type=${otherTypeKey}&search=${encodeURIComponent(massEditRelSearch)}&page_size=20`,
-        )
-        .then((res) => {
-          setMassEditRelOptions(res.items.filter((item) => !selectedSet.has(item.id)));
-        })
-        .catch(() => setMassEditRelOptions([]));
-    }, 250);
+    const timer = setTimeout(() => setMassEditRelSearchDebounced(massEditRelSearch), 250);
     return () => clearTimeout(timer);
-  }, [massEditRelSearch, massEditOpen, currentMassField, selectedIds]);
+  }, [massEditRelSearch]);
+
+  const relSearchTypes = useMemo(
+    () => (currentMassField?.relInfo ? [currentMassField.relInfo.otherTypeKey] : []),
+    [currentMassField],
+  );
+  const {
+    items: massEditRelItems,
+    loading: massEditRelLoading,
+    hasMore: massEditRelHasMore,
+    loadMore: massEditRelLoadMore,
+  } = useCardSearch({
+    types: relSearchTypes,
+    search: massEditRelSearchDebounced,
+    enabled: massEditOpen && !!currentMassField?.relInfo,
+    pageSize: 50,
+  });
+
+  // Exclude the cards being mass-edited so a card can't be linked to itself.
+  const massEditRelOptions = useMemo(() => {
+    const selectedSet = new Set(selectedIds);
+    return massEditRelItems
+      .filter((item) => !selectedSet.has(item.id))
+      .map((item) => ({ id: item.id, name: item.name, type: item.type }));
+  }, [massEditRelItems, selectedIds]);
 
   const handleMassEdit = async () => {
     if (selectedIds.length === 0 || !massEditField) return;
@@ -1185,6 +1581,50 @@ export default function InventoryPage() {
         return;
       }
 
+      if (massEditField === "parent") {
+        const newParentId = massEditRelMode === "add" ? massEditParent?.id ?? null : null;
+        if (massEditRelMode === "add" && !newParentId) {
+          setMassEditError(t("massEdit.parent.pickOne"));
+          return;
+        }
+        // Per-card PATCH rather than /cards/bulk: re-parenting fails per card
+        // (a name collision under the new parent, a capability depth limit),
+        // and the blocker list below reports exactly which ones. One bulk
+        // transaction would abort every move because of a single collision.
+        const targets = selectedIds.filter((id) => id !== newParentId);
+        const results = await Promise.allSettled(
+          targets.map((id) => api.patch(`/cards/${id}`, { parent_id: newParentId })),
+        );
+        const blockers: typeof massEditBlockers = [];
+        let succeeded = 0;
+        results.forEach((r, i) => {
+          if (r.status === "fulfilled") {
+            succeeded += 1;
+            return;
+          }
+          const id = targets[i];
+          const card = data.find((d) => d.id === id);
+          blockers.push({
+            id,
+            name: card?.name ?? id,
+            missingRelations: [],
+            missingTagGroups: [],
+            message: r.reason instanceof Error ? r.reason.message : t("massEdit.failed"),
+          });
+        });
+        await loadData();
+        if (blockers.length === 0) {
+          setMassEditOpen(false);
+          setMassEditField("");
+          setMassEditValue("");
+          setMassEditParent(null);
+          return;
+        }
+        setMassEditSucceeded(succeeded);
+        setMassEditBlockers(blockers);
+        return;
+      }
+
       if (massEditField === "subtype") {
         await api.patch("/cards/bulk", {
           ids: selectedIds,
@@ -1309,6 +1749,40 @@ export default function InventoryPage() {
   };
 
   const columnDefs = useMemo<ColDef[]>(() => {
+    // ── Display text for "Export current view" ──────────────────────────────
+    // That export reads every cell with `getCellValue({ useFormatter: true })`,
+    // which returns the `valueFormatter` output or, failing that, the RAW cell
+    // value — it never consults `cellRenderer`. So every column whose renderer
+    // maps a key to a label needs a matching `valueFormatter`, or the workbook
+    // gets internal keys and record ids instead of what's on screen (#887).
+    //
+    // Two rules for these formatters:
+    //   1. Read `p.value` ONLY, never `p.data`/`p.node`. `agSelectCellEditor`
+    //      formats its dropdown options via `formatValue(column, null, value)`,
+    //      i.e. with no row — a data-aware formatter throws and breaks inline
+    //      editing.
+    //   2. Always return a string. A nullish return falls back to the raw
+    //      value, which is exactly the bug.
+    const optionText = (options: FieldDef["options"], v: unknown): string => {
+      const opt = options?.find((o) => o.key === v);
+      if (opt) return optLabel(opt);
+      return v === null || v === undefined ? "" : String(v);
+    };
+    const optionsText = (options: FieldDef["options"], v: unknown): string =>
+      (Array.isArray(v) ? v : []).map((x) => optionText(options, x)).join(", ");
+    // Shared by the approval chip and its formatter so the two can't drift.
+    // An unrecognised status renders as an empty cell, so it exports as one.
+    const approvalText = (v?: string): string => {
+      if (!v || !(v in APPROVAL_STATUS_COLORS)) return "";
+      const labels: Record<string, string> = {
+        DRAFT: t("common:status.draft"),
+        APPROVED: t("common:status.approved"),
+        BROKEN: t("common:status.broken"),
+        REJECTED: t("common:status.rejected"),
+      };
+      return labels[v] || v;
+    };
+
     const cols: ColDef[] = [
       {
         colId: "core_type",
@@ -1316,13 +1790,17 @@ export default function InventoryPage() {
         headerName: t("common:labels.type"),
         width: 140,
         hide: !selectedColumns.has("core_type"),
+        valueFormatter: (p: { value?: string }) => {
+          const tp = types.find((x) => x.key === p.value);
+          return tp ? typeLabel(tp) : p.value ?? "";
+        },
         cellRenderer: (p: { value: string }) => {
           const tp = types.find((x) => x.key === p.value);
           return tp ? (
             <Chip
               size="small"
               label={typeLabel(tp)}
-              sx={{ bgcolor: tp.color, color: "#fff", fontWeight: 500 }}
+              sx={{ bgcolor: tp.color, color: readableTextColor(tp.color), fontWeight: 500 }}
             />
           ) : (
             p.value
@@ -1405,6 +1883,15 @@ export default function InventoryPage() {
             },
       },
       {
+        colId: "core_reference",
+        field: "reference",
+        headerName: t("columns.id"),
+        width: 130,
+        sortable: true,
+        hide: !selectedColumns.has("core_reference"),
+        cellStyle: { fontFamily: "monospace", color: "var(--mui-palette-text-secondary)" },
+      },
+      {
         colId: "core_path",
         headerName: t("columns.path"),
         flex: 1,
@@ -1414,6 +1901,45 @@ export default function InventoryPage() {
         valueGetter: (p: { data?: Card }) =>
           p.data ? parentPaths.get(p.data.id) ?? "" : "",
         cellStyle: { color: "var(--mui-palette-text-secondary)" },
+      },
+      {
+        // The immediate parent, as opposed to core_path's full ancestor chain.
+        // Editable in Grid Edit mode so a one-off move needs neither Mass Edit
+        // nor a trip to the card detail page. Only offered for a single
+        // hierarchical type, matching the Mass Edit Parent field: the picker
+        // needs one concrete type to browse.
+        colId: "core_parent",
+        field: "parent_id",
+        headerName: t("columns.parent"),
+        flex: 1,
+        minWidth: 160,
+        sortable: true,
+        hide: !selectedColumns.has("core_parent"),
+        editable: gridEditMode && !!selectedType && !!typeConfig?.has_hierarchy,
+        cellEditor: ParentCellEditor,
+        cellEditorPopup: true,
+        cellEditorParams: (p: { data: Card }) => ({
+          typeKey: p.data.type,
+          excludeIds: descendantIndex.get(p.data.id) ?? [p.data.id],
+          currentParent: p.data.parent_id
+            ? cardsById.get(p.data.parent_id) ?? null
+            : null,
+        }),
+        // The cell value is the raw parent id — see buildCardIndex for why it
+        // must not be an object resolved out of a memo.
+        valueGetter: (p: { data?: Card }) => p.data?.parent_id ?? null,
+        valueSetter: (p: { data: Card; newValue: string | null }) => {
+          p.data.parent_id = p.newValue ?? undefined;
+          return true;
+        },
+        // The value is an opaque id, so the header text filter and the sort
+        // comparator both have to work off the resolved name instead.
+        filterValueGetter: (p: { data?: Card }) => parentNameOf(p.data?.parent_id),
+        comparator: (a: string | null, b: string | null) =>
+          parentNameOf(a).localeCompare(parentNameOf(b)),
+        // …and so does the export, which would otherwise write the raw id (#887).
+        valueFormatter: (p: { value?: string | null }) => parentNameOf(p.value),
+        cellRenderer: (p: { value: string | null }) => parentNameOf(p.value),
       },
       {
         colId: "core_description",
@@ -1443,6 +1969,13 @@ export default function InventoryPage() {
               },
             }
           : {}),
+        // Also formats the agSelectCellEditor dropdown, so Grid Edit mode now
+        // offers subtype names rather than their internal keys.
+        valueFormatter: (p: { value?: string }) => {
+          if (!p.value) return "";
+          const st = typeConfig.subtypes?.find((s) => s.key === p.value);
+          return st ? stLabel(st) : p.value;
+        },
         cellRenderer: (p: { value: string }) => {
           if (!p.value) return "";
           const st = typeConfig.subtypes?.find((s) => s.key === p.value);
@@ -1463,20 +1996,11 @@ export default function InventoryPage() {
         headerName: t("columns.lifecycle"),
         width: 150,
         hide: !selectedColumns.has("core_lifecycle"),
-        valueGetter: (p: { data: Card }) => {
-          const lc = p.data?.lifecycle || {};
-          const now = new Date().toISOString().slice(0, 10);
-          for (const phase of [
-            "endOfLife",
-            "phaseOut",
-            "active",
-            "phaseIn",
-            "plan",
-          ]) {
-            if (lc[phase] && lc[phase] <= now) return phase;
-          }
-          return "";
-        },
+        // Same resolver the badge below renders from — the cell value, the sort
+        // key and the exported text must agree with the chip the user sees.
+        valueGetter: (p: { data?: Card }) => (p.data ? getLifecyclePhase(p.data) : ""),
+        valueFormatter: (p: { value?: string }) =>
+          p.value ? t(`common:lifecycle.${p.value}`) : "",
         cellRenderer: (p: { data: Card }) => {
           const lifecycle = p.data?.lifecycle as
             | Record<string, string>
@@ -1491,20 +2015,15 @@ export default function InventoryPage() {
         headerName: t("columns.approvalStatus"),
         width: 110,
         hide: !selectedColumns.has("core_approval_status"),
+        valueFormatter: (p: { value?: string }) => approvalText(p.value),
         cellRenderer: (p: { value: string }) => {
           const color =
             APPROVAL_STATUS_COLORS[p.value as keyof typeof APPROVAL_STATUS_COLORS];
           if (!color) return "";
-          const labels: Record<string, string> = {
-            DRAFT: t("common:status.draft"),
-            APPROVED: t("common:status.approved"),
-            BROKEN: t("common:status.broken"),
-            REJECTED: t("common:status.rejected"),
-          };
           return (
             <Chip
               size="small"
-              label={labels[p.value] || p.value}
+              label={approvalText(p.value)}
               sx={{ bgcolor: color, color: "#fff", fontWeight: 500 }}
             />
           );
@@ -1516,6 +2035,9 @@ export default function InventoryPage() {
         headerName: t("columns.dataQuality"),
         width: 130,
         hide: !selectedColumns.has("core_data_quality"),
+        // The export carries the caption the bar is labelled with, not the raw
+        // float — same rounding, same "missing reads as 0%".
+        valueFormatter: (p: { value?: number }) => `${Math.round(p.value || 0)}%`,
         cellRenderer: (p: { value: number }) => {
           const v = Math.round(p.value || 0);
           const color =
@@ -1567,6 +2089,8 @@ export default function InventoryPage() {
         // text filter stringifies it to "[object Object]" and never matches a
         // typed tag name (issue #728). Filter on the joined tag names instead.
         filterValueGetter: (p: { data?: Card }) => tagsToFilterText(p.data?.tags),
+        // Ditto for the export, which stringified the refs to "[object Object]".
+        valueFormatter: (p: { value?: TagRef[] }) => tagsToFilterText(p.value),
         cellRenderer: (p: { value: TagRef[] }) => {
           const tags = p.value || [];
           if (tags.length === 0) return "";
@@ -1617,6 +2141,10 @@ export default function InventoryPage() {
         field: "status",
         headerName: t("common:labels.status"),
         width: 110,
+        valueFormatter: (p: { value?: string }) =>
+          p.value === "ARCHIVED"
+            ? t("common:status.archived")
+            : t("common:status.active"),
         cellRenderer: (p: { value: string }) => {
           if (p.value === "ARCHIVED") {
             return (
@@ -1658,6 +2186,10 @@ export default function InventoryPage() {
                   cellEditorParams: {
                     values: ["", ...field.options.map((o) => o.key)],
                   },
+                  // Feeds the export AND the dropdown above, which used to list
+                  // raw option keys.
+                  valueFormatter: (p: { value?: unknown }) =>
+                    optionText(field.options, p.value),
                   cellRenderer: (p: { value: string }) => {
                     const opt = field.options?.find((o) => o.key === p.value);
                     return opt ? (
@@ -1678,6 +2210,8 @@ export default function InventoryPage() {
               : {}),
             ...(field.type === "multiple_select" && field.options
               ? {
+                  valueFormatter: (p: { value?: unknown }) =>
+                    optionsText(field.options, p.value),
                   cellRenderer: (p: { value: unknown }) => {
                     const arr = Array.isArray(p.value) ? p.value : [];
                     return (
@@ -1723,6 +2257,7 @@ export default function InventoryPage() {
                   },
                 }
               : {}),
+            ...(field.type === "date" ? dateColumnFilterDef : {}),
           });
         }
       }
@@ -1740,6 +2275,8 @@ export default function InventoryPage() {
             (p.data?.attributes || {})[field.key] ?? "",
           ...(field.type === "single_select" && field.options
             ? {
+                valueFormatter: (p: { value?: unknown }) =>
+                  optionText(field.options, p.value),
                 cellRenderer: (p: { value: string }) => {
                   const opt = field.options?.find((o) => o.key === p.value);
                   return opt ? (
@@ -1756,6 +2293,8 @@ export default function InventoryPage() {
             : {}),
           ...(field.type === "multiple_select" && field.options
             ? {
+                valueFormatter: (p: { value?: unknown }) =>
+                  optionsText(field.options, p.value),
                 cellRenderer: (p: { value: unknown }) => {
                   const arr = Array.isArray(p.value) ? p.value : [];
                   return (
@@ -1776,6 +2315,7 @@ export default function InventoryPage() {
                 },
               }
             : {}),
+          ...(field.type === "date" ? dateColumnFilterDef : {}),
         });
       }
     }
@@ -1840,15 +2380,29 @@ export default function InventoryPage() {
                 <Typography
                   variant="body2"
                   sx={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}
-                  title={p.value}
+                  title={relationsLoading && !p.value ? t("columns.relationsLoading") : p.value}
                 >
-                  {p.value || <span style={{ opacity: 0.5 }}>{t("columns.clickToEdit")}</span>}
+                  {p.value ||
+                    (relationsLoading ? (
+                      <span style={{ opacity: 0.5 }}>…</span>
+                    ) : (
+                      <span style={{ opacity: 0.5 }}>{t("columns.clickToEdit")}</span>
+                    ))}
                 </Typography>
                 <MaterialSymbol icon="edit" size={14} />
               </Box>
             );
           }
-          if (!p.value) return "";
+          if (!p.value) {
+            // Distinguish "still loading" from "no relations" — an empty cell
+            // during the fetch window reads as missing data.
+            if (!relationsLoading) return "";
+            return (
+              <span style={{ opacity: 0.5 }} title={t("columns.relationsLoading")}>
+                …
+              </span>
+            );
+          }
           return (
             <Box
               sx={{
@@ -1874,6 +2428,81 @@ export default function InventoryPage() {
       });
     }
 
+    // Stakeholder columns — one per stakeholder role of the selected type.
+    // The cell value is the card's StakeholderRef[] filtered to that role
+    // (already part of the /cards list payload — no extra fetch), rendered as
+    // person chips and edited via StakeholdersCellEditor in grid-edit mode.
+    for (const role of stakeholderRoles) {
+      const roleKey = role.key;
+      const roleLabel = typeLabel(role);
+      const colKey = `stakeholder_${roleKey}`;
+      cols.push({
+        colId: colKey,
+        field: colKey,
+        headerName: t("columns.stakeholderRole", { role: roleLabel }),
+        width: 180,
+        hide: !selectedColumns.has(colKey),
+        editable: gridEditMode && canManageStakeholders,
+        cellEditor: StakeholdersCellEditor,
+        cellEditorPopup: true,
+        cellEditorParams: { roleKey, roleLabel },
+        valueGetter: (p: { data?: Card }) =>
+          (p.data?.stakeholders || []).filter((s) => s.role === roleKey),
+        valueSetter: (p: { data: Card; newValue: StakeholderRef[] }) => {
+          const others = (p.data.stakeholders || []).filter((s) => s.role !== roleKey);
+          p.data.stakeholders = [...others, ...(p.newValue || [])];
+          return true;
+        },
+        // The raw value is a StakeholderRef[]. Filter on names AND emails
+        // (either should match what the user types); sort on the visible
+        // names; export/copy (valueFormatter) carries emails only.
+        filterValueGetter: (p: { data?: Card }) => {
+          const refs = (p.data?.stakeholders || []).filter((s) => s.role === roleKey);
+          return `${stakeholdersToText(refs)}; ${stakeholdersToEmails(refs)}`;
+        },
+        valueFormatter: (p: { value?: StakeholderRef[] }) => stakeholdersToEmails(p.value),
+        comparator: (a: StakeholderRef[], b: StakeholderRef[]) =>
+          stakeholdersToText(a).localeCompare(stakeholdersToText(b)),
+        cellRenderer: (p: { value: StakeholderRef[] }) => {
+          const refs = p.value || [];
+          if (refs.length === 0) return "";
+          const visible = refs.slice(0, 3);
+          const overflow = refs.length - visible.length;
+          return (
+            <Box
+              sx={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 0.25,
+                rowGap: "2px",
+                alignItems: "center",
+                lineHeight: 1,
+              }}
+            >
+              {visible.map((s) => (
+                <Chip
+                  key={s.user_id}
+                  icon={<MaterialSymbol icon="person" size={12} />}
+                  label={s.user_display_name || s.user_email || s.user_id}
+                  size="small"
+                  variant="outlined"
+                  sx={{ height: 16, fontSize: 11, "& .MuiChip-label": { px: 0.75 } }}
+                />
+              ))}
+              {overflow > 0 && (
+                <Chip
+                  label={`+${overflow}`}
+                  size="small"
+                  variant="outlined"
+                  sx={{ height: 16, fontSize: 11, "& .MuiChip-label": { px: 0.75 } }}
+                />
+              )}
+            </Box>
+          );
+        },
+      });
+    }
+
     // Metadata columns (always defined, shown/hidden via selectedColumns)
     cols.push(
       {
@@ -1883,6 +2512,7 @@ export default function InventoryPage() {
         width: 160,
         hide: !selectedColumns.has("meta_created_at"),
         valueFormatter: (p) => (p.value ? formatDateTime(p.value) : ""),
+        ...dateColumnFilterDef,
       },
       {
         colId: "meta_updated_at",
@@ -1891,6 +2521,7 @@ export default function InventoryPage() {
         width: 160,
         hide: !selectedColumns.has("meta_updated_at"),
         valueFormatter: (p) => (p.value ? formatDateTime(p.value) : ""),
+        ...dateColumnFilterDef,
       },
       {
         colId: "meta_created_by",
@@ -1912,14 +2543,13 @@ export default function InventoryPage() {
       }
     );
 
-    return cols;
-  }, [types, typeConfig, commonFields, gridEditMode, relevantRelTypes, relTypeGroupMap, relationsMap, selectedType, parentPaths, filters.showArchived, selectedColumns, userNameMap, t, formatDate, formatDateTime, canViewCostsGlobally, tagGroups]);
+    return columnFreeze.applyFrozen(cols);
+  }, [columnFreeze, types, typeConfig, commonFields, gridEditMode, relevantRelTypes, relTypeGroupMap, relationsMap, relationsLoading, selectedType, parentPaths, cardsById, parentNameOf, descendantIndex, filters.showArchived, selectedColumns, userNameMap, t, formatDate, formatDateTime, canViewCostsGlobally, canManageStakeholders, tagGroups, stakeholderRoles, typeLabel]);
 
   // Restore the saved column layout (order/width/pinning/sort) onto the grid.
   // Keyed on `columnDefs` so it re-applies each time the column *set* changes —
   // crucially when attribute/relation columns arrive after the metamodel loads,
-  // which happens *after* the grid is ready. We strip `hide` so visibility keeps
-  // flowing from `selectedColumns`. `restorePendingRef` stops the restore once
+  // which happens *after* the grid is ready. `restorePendingRef` stops the restore once
   // the user manually rearranges; `applyingLayoutRef` guards against capturing
   // the events this apply fires. Without re-applying on columnDefs changes, a
   // one-shot restore at grid-ready loses the late-arriving columns' positions.
@@ -1929,11 +2559,32 @@ export default function InventoryPage() {
     if (!layout || layout.length === 0) return;
     const api = gridRef.current?.api;
     if (!api) return;
-    const state: ColumnState[] = layout.map(({ hide: _hide, ...rest }) => rest);
+    // `hide` and `pinned` are stripped: visibility flows from
+    // `selectedColumns` and freezing from `frozenColumns`, both via colDefs.
+    const state: ColumnState[] = layout.map(
+      ({ hide: _hide, pinned: _pinned, ...rest }) => rest,
+    );
     applyingLayoutRef.current = true;
     api.applyColumnState({ state, applyOrder: true });
     applyingLayoutRef.current = false;
   }, [gridReady, columnDefs, layoutNonce]);
+
+  // Restore the saved column-filter model onto the grid. Like the layout effect
+  // above, keyed on `columnDefs` so filters on attribute/relation columns land
+  // once those columns arrive after the metamodel loads. `filterNonce` forces a
+  // re-apply when a view is applied without changing the column set. The
+  // `applyingFilterRef` guard stops onFilterChanged from overwriting the
+  // persisted model while we apply it (see handleFilterChanged).
+  useEffect(() => {
+    if (!gridReady) return;
+    const api = gridRef.current?.api;
+    if (!api) return;
+    const model = columnFilterModelRef.current;
+    applyingFilterRef.current = true;
+    api.setFilterModel(model && Object.keys(model).length > 0 ? model : null);
+    applyingFilterRef.current = false;
+    setHasColumnFilters(Object.keys(api.getFilterModel() ?? {}).length > 0);
+  }, [gridReady, columnDefs, filterNonce]);
 
   // Render mass edit value input based on field type
   const renderMassEditInput = () => {
@@ -2003,6 +2654,46 @@ export default function InventoryPage() {
       );
     }
 
+    if (massEditField === "parent") {
+      const ownLabel = typeConfig ? typeLabel(typeConfig) : selectedType;
+      return (
+        <Box>
+          <ToggleButtonGroup
+            value={massEditRelMode}
+            exclusive
+            size="small"
+            onChange={(_, val) => { if (val) setMassEditRelMode(val); }}
+            sx={{ mb: 2 }}
+          >
+            <ToggleButton value="add" sx={{ textTransform: "none", px: 2 }}>
+              <MaterialSymbol icon="account_tree" size={16} style={{ marginRight: 6 }} />
+              {t("massEdit.parent.set")}
+            </ToggleButton>
+            <ToggleButton value="remove" sx={{ textTransform: "none", px: 2 }}>
+              <MaterialSymbol icon="link_off" size={16} style={{ marginRight: 6 }} />
+              {t("massEdit.parent.clear")}
+            </ToggleButton>
+          </ToggleButtonGroup>
+          {massEditRelMode === "add" && (
+            <CardPicker
+              types={selectedType}
+              value={massEditParent}
+              onChange={setMassEditParent}
+              excludeIds={selectedIds}
+              enabled={massEditOpen}
+              fullWidth
+              label={t("massEdit.parent.pick", { type: ownLabel })}
+            />
+          )}
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, display: "block" }}>
+            {massEditRelMode === "add"
+              ? t("massEdit.parent.setHint", { count: selectedIds.length })
+              : t("massEdit.parent.clearHint", { count: selectedIds.length })}
+          </Typography>
+        </Box>
+      );
+    }
+
     if (currentMassField.relInfo) {
       const otherType = types.find((tp) => tp.key === currentMassField.relInfo!.otherTypeKey);
       const otherLabel = otherType
@@ -2038,6 +2729,18 @@ export default function InventoryPage() {
             inputValue={massEditRelSearch}
             onInputChange={(_, val) => setMassEditRelSearch(val)}
             filterOptions={(x) => x}
+            loading={massEditRelLoading}
+            openOnFocus
+            slotProps={{
+              listbox: {
+                onScroll: (event) => {
+                  const el = event.currentTarget;
+                  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) {
+                    if (massEditRelHasMore && !massEditRelLoading) massEditRelLoadMore();
+                  }
+                },
+              },
+            }}
             renderOption={(props, opt) => {
               const tConf = types.find((tp) => tp.key === opt.type);
               return (
@@ -2068,9 +2771,7 @@ export default function InventoryPage() {
               />
             )}
             noOptionsText={
-              massEditRelSearch
-                ? t("common:labels.noResults")
-                : t("massEdit.rel.typeToSearch", { type: otherLabel })
+              massEditRelLoading ? t("common:labels.loading") : t("common:labels.noResults")
             }
           />
           <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, display: "block" }}>
@@ -2146,6 +2847,7 @@ export default function InventoryPage() {
             width={300}
             onWidthChange={() => {}}
             relevantRelTypes={relevantRelTypes}
+            stakeholderRoles={stakeholderRoles}
             relationsMap={relationsMap}
             tagGroups={tagGroups}
             canArchive={canArchive}
@@ -2156,8 +2858,12 @@ export default function InventoryPage() {
             onSelectedColumnsChange={setSelectedColumns}
             defaultColumns={defaultColumns}
             onResetColumns={handleResetColumns}
+            frozenColumns={columnFreeze.frozenColumns}
+            onToggleFrozen={columnFreeze.toggleFrozen}
             columnState={columnState}
             onApplyColumnState={applyColumnLayout}
+            onApplyColumnFilters={applyColumnFilters}
+            columnFilterModel={columnFilterModel}
           />
         </Drawer>
       ) : (
@@ -2170,6 +2876,7 @@ export default function InventoryPage() {
           width={sidebarWidth}
           onWidthChange={setSidebarWidth}
           relevantRelTypes={relevantRelTypes}
+          stakeholderRoles={stakeholderRoles}
           relationsMap={relationsMap}
           tagGroups={tagGroups}
           canArchive={canArchive}
@@ -2180,8 +2887,12 @@ export default function InventoryPage() {
           onSelectedColumnsChange={setSelectedColumns}
           defaultColumns={defaultColumns}
           onResetColumns={handleResetColumns}
+          frozenColumns={columnFreeze.frozenColumns}
+          onToggleFrozen={columnFreeze.toggleFrozen}
           columnState={columnState}
           onApplyColumnState={applyColumnLayout}
+          onApplyColumnFilters={applyColumnFilters}
+          columnFilterModel={columnFilterModel}
         />
       )}
 
@@ -2199,10 +2910,17 @@ export default function InventoryPage() {
           <Typography variant={isMobile ? "h6" : "h5"} fontWeight={600}>
             {t("page.title")}
           </Typography>
-          <Chip label={t("common:items", { count: filteredData.length })} size="small" />
+          <Chip label={t("common:items", { count: displayedRowCount ?? filteredData.length })} size="small" />
           <Box sx={{ flex: 1 }} />
           {isMobile ? (
             <>
+              {hasColumnFilters && (
+                <Tooltip title={t("filter.clearColumnFilters")}>
+                  <IconButton onClick={() => applyColumnFilters(null)} size="small">
+                    <MaterialSymbol icon="filter_alt_off" size={20} />
+                  </IconButton>
+                </Tooltip>
+              )}
               <Tooltip title={gridEditMode ? t("toolbar.editing") : t("toolbar.gridEdit")}>
                 <IconButton
                   color={gridEditMode ? "primary" : "default"}
@@ -2236,6 +2954,17 @@ export default function InventoryPage() {
             </>
           ) : (
             <>
+              {hasColumnFilters && (
+                <Button
+                  variant="outlined"
+                  color="inherit"
+                  startIcon={<MaterialSymbol icon="filter_alt_off" size={18} />}
+                  onClick={() => applyColumnFilters(null)}
+                  sx={{ textTransform: "none" }}
+                >
+                  {t("filter.clearColumnFilters")}
+                </Button>
+              )}
               <Button
                 variant={gridEditMode ? "contained" : "outlined"}
                 color={gridEditMode ? "primary" : "inherit"}
@@ -2305,8 +3034,13 @@ export default function InventoryPage() {
           >
             <ListItemText
               primary={t("export.currentView")}
-              secondary={t("export.currentViewHint")}
+              secondary={
+                relationsLoading
+                  ? t("export.waitingForRelations")
+                  : t("export.currentViewHint")
+              }
             />
+            {relationsLoading && <CircularProgress size={14} sx={{ ml: 1 }} />}
           </MenuItem>
         </Menu>
 
@@ -2340,13 +3074,7 @@ export default function InventoryPage() {
               size="small"
               variant="contained"
               color="inherit"
-              sx={{
-                color: "primary.main",
-                bgcolor: "background.paper",
-                textTransform: "none",
-                whiteSpace: "nowrap",
-                "&:hover": { bgcolor: "action.selected" },
-              }}
+              sx={{ color: "primary.main", ...SELECTION_BAR_BUTTON_SX }}
               startIcon={<MaterialSymbol icon="edit" size={16} />}
               onClick={() => {
                 setMassEditOpen(true);
@@ -2367,13 +3095,7 @@ export default function InventoryPage() {
                 size="small"
                 variant="contained"
                 color="inherit"
-                sx={{
-                  color: "#e65100",
-                  bgcolor: "background.paper",
-                  textTransform: "none",
-                  whiteSpace: "nowrap",
-                  "&:hover": { bgcolor: "action.selected" },
-                }}
+                sx={{ color: "#e65100", ...SELECTION_BAR_BUTTON_SX }}
                 startIcon={<MaterialSymbol icon="archive" size={16} />}
                 onClick={() => setMassArchiveOpen(true)}
               >
@@ -2385,13 +3107,7 @@ export default function InventoryPage() {
                 size="small"
                 variant="contained"
                 color="inherit"
-                sx={{
-                  color: "#2e7d32",
-                  bgcolor: "background.paper",
-                  textTransform: "none",
-                  whiteSpace: "nowrap",
-                  "&:hover": { bgcolor: "action.selected" },
-                }}
+                sx={{ color: "#2e7d32", ...SELECTION_BAR_BUTTON_SX }}
                 startIcon={<MaterialSymbol icon="restore" size={16} />}
                 onClick={() => setMassRestoreOpen(true)}
               >
@@ -2403,13 +3119,7 @@ export default function InventoryPage() {
                 size="small"
                 variant="contained"
                 color="inherit"
-                sx={{
-                  color: "#c62828",
-                  bgcolor: "background.paper",
-                  textTransform: "none",
-                  whiteSpace: "nowrap",
-                  "&:hover": { bgcolor: "action.selected" },
-                }}
+                sx={{ color: "#c62828", ...SELECTION_BAR_BUTTON_SX }}
                 startIcon={<MaterialSymbol icon="delete_forever" size={16} />}
                 onClick={() => setMassDeleteOpen(true)}
               >
@@ -2432,10 +3142,27 @@ export default function InventoryPage() {
           </Box>
         )}
 
+        {/* A failed load leaves the previous rows on screen behind the alert —
+            blanking the grid would lose the user's context for no benefit. */}
+        {loadError && (
+          <Alert
+            severity="error"
+            sx={{ mb: 1 }}
+            action={
+              <Button color="inherit" size="small" onClick={() => loadData()}>
+                {t("common:actions.retry")}
+              </Button>
+            }
+          >
+            {t("common:errors.occurred")}
+          </Alert>
+        )}
+
         {/* AG Grid */}
         <Box
+          ref={columnFreeze.containerRef}
           className={mode === "dark" ? "ag-theme-quartz-dark" : "ag-theme-quartz"}
-          sx={{ flex: 1, width: "100%", minHeight: 0 }}
+          sx={{ flex: 1, width: "100%", minHeight: 0, ...columnFreeze.sx }}
         >
           <AgGridReact
             key={isRtl ? "rtl" : "ltr"}
@@ -2443,13 +3170,19 @@ export default function InventoryPage() {
             ref={gridRef}
             rowData={filteredData}
             columnDefs={columnDefs}
-            loading={loading}
+            // `searchPending` covers the debounce window too, so the grid never
+            // looks settled while it is still showing the previous query's rows.
+            loading={loading || searchPending}
             rowSelection={rowSelection}
+            // Keeps the checkbox column left of every frozen column.
+            selectionColumnDef={columnFreeze.selectionColumnDef}
             onSelectionChanged={handleSelectionChanged}
             onCellValueChanged={handleCellEdit}
             onRowClicked={onRowClicked}
             onSortChanged={handleSortChanged}
             onGridReady={handleGridReady}
+            onFilterChanged={handleFilterChanged}
+            onModelUpdated={handleModelUpdated}
             onDragStopped={captureColumnState}
             onColumnPinned={captureColumnState}
             maintainColumnOrder
@@ -2472,6 +3205,18 @@ export default function InventoryPage() {
           />
         </Box>
       </Box>
+
+      {/* Inline-edit failures (rejected re-parent, …) */}
+      <Snackbar
+        open={!!cellEditError}
+        autoHideDuration={8000}
+        onClose={() => setCellEditError("")}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert severity="error" variant="filled" onClose={() => setCellEditError("")}>
+          {cellEditError}
+        </Alert>
+      </Snackbar>
 
       {/* Mass Edit Dialog */}
       <Dialog open={massEditOpen} onClose={() => setMassEditOpen(false)} maxWidth="sm" fullWidth>
@@ -2553,7 +3298,9 @@ export default function InventoryPage() {
                 setMassEditValue("");
                 setMassEditRelTargets([]);
                 setMassEditRelSearch("");
+                setMassEditRelSearchDebounced("");
                 setMassEditRelMode("add");
+                setMassEditParent(null);
                 setMassEditError("");
               }}
             >
