@@ -4,8 +4,8 @@ Updates existing installs so the Contract card type's lineItemDetails field
 becomes a proper table field with columns (itemName, quantity, unitCost,
 totalCost).  Also updates the AI extraction scenario instructions to match.
 
-Revision ID: 121
-Revises: 120
+Revision ID: 138
+Revises: 137
 Create Date: 2026-07-11
 """
 
@@ -16,8 +16,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "121"
-down_revision: Union[str, None] = "120"
+revision: str = "138"
+down_revision: Union[str, None] = "137"
 branch_labels: Union[str, None] = None
 depends_on: Union[str, None] = None
 

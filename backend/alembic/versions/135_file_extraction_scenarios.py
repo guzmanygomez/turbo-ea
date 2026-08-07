@@ -1,7 +1,7 @@
 """Add file_extraction_scenarios table.
 
-Revision ID: 118
-Revises: 117
+Revision ID: 135
+Revises: 134
 Create Date: 2026-07-08
 """
 
@@ -12,8 +12,8 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision: str = "118"
-down_revision: Union[str, None] = "117"
+revision: str = "135"
+down_revision: Union[str, None] = "134"
 branch_labels: Union[str, None] = None
 depends_on: Union[str, None] = None
 

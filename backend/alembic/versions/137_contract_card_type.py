@@ -10,8 +10,8 @@ ensure 'End of Life', 'Hierarchy', and 'Successors/Lineage' sections are
 collapsed by default, upsert the relation types if missing, and upsert the
 AI file extraction scenario.
 
-Revision ID: 120
-Revises: 119
+Revision ID: 137
+Revises: 136
 Create Date: 2026-07-10
 """
 
@@ -23,8 +23,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "120"
-down_revision: Union[str, None] = "119"
+revision: str = "137"
+down_revision: Union[str, None] = "136"
 branch_labels: Union[str, None] = None
 depends_on: Union[str, None] = None
 

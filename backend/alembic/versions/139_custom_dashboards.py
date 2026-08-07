@@ -1,7 +1,7 @@
 """Add custom_dashboards table.
 
-Revision ID: 122
-Revises: 121
+Revision ID: 139
+Revises: 138
 Create Date: 2026-07-12
 """
 
@@ -12,8 +12,8 @@ from sqlalchemy.dialects import postgresql as pg
 
 from alembic import op
 
-revision: str = "122"
-down_revision: Union[str, None] = "121"
+revision: str = "139"
+down_revision: Union[str, None] = "138"
 branch_labels: Union[str, None] = None
 depends_on: Union[str, None] = None
 
